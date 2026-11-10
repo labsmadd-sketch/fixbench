@@ -238,6 +238,17 @@ service cloud.firestore {
       allow read: if isDesk();
     }
 
+    // Reports and "Export all data" read these across all their parents.
+    match /{path=**}/history/{entry} {
+      allow read: if isStaff();
+    }
+    match /{path=**}/notes/{note} {
+      allow read: if isStaff();
+    }
+    match /{path=**}/movements/{movement} {
+      allow read: if isStaff();
+    }
+
     // ---------- public job status (QR code on the receipt) ----------
     match /publicStatus/{token} {
       allow get: if true;     // one document by its unguessable token

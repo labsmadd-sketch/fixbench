@@ -6,7 +6,7 @@ import { ErrorAlert, Field, firstName, saveSettings, StepIntro, useSave, type St
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-export function ShopStep({ shop, go }: StepProps) {
+export function ShopStep({ shop, go, inSettings }: StepProps) {
   const { profile } = useSession();
   const [f, setF] = useState({
     name: shop?.name ?? '',
@@ -71,7 +71,7 @@ export function ShopStep({ shop, go }: StepProps) {
   return (
     <form className="setup__grid" onSubmit={onSubmit} noValidate>
       <div className="setup__main">
-        <StepIntro title={profile ? `Welcome, ${firstName(profile.name)}. Tell us about your shop` : 'Tell us about your shop'}>
+        <StepIntro title={inSettings ? 'Shop details' : profile ? `Welcome, ${firstName(profile.name)}. Tell us about your shop` : 'Tell us about your shop'}>
           This goes on receipts, invoices and the customer status page.
         </StepIntro>
 
@@ -120,7 +120,7 @@ export function ShopStep({ shop, go }: StepProps) {
         <div className="setup__actions">
           <span className="spacer" />
           <button className="btn btn--primary btn--lg" type="submit" disabled={busy}>
-            {busy ? 'Saving…' : 'Continue to logo and colours'} <Icon name="arrowRight" />
+            {busy ? 'Saving…' : inSettings ? 'Save changes' : 'Continue to logo and colours'} {!inSettings && <Icon name="arrowRight" />}
           </button>
         </div>
       </div>

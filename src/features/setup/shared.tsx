@@ -5,8 +5,10 @@ import type { PublicShop, ShopSettings } from '../../types';
 
 export interface StepProps {
   shop: ShopSettings | null;
-  /** Go to a step (1–5). */
+  /** Go to a step (1–5). In Settings this just confirms the save. */
   go: (step: number) => void;
+  /** Shown inside Settings: "Save changes" instead of "Continue", no Back. */
+  inSettings?: boolean;
 }
 
 type Patch<T> = { [K in keyof T]?: T[K] | FieldValue };

@@ -16,7 +16,7 @@ function parseRate(v: string): number | null {
   return v.trim() !== '' && Number.isFinite(n) && n >= 0 && n < 100 ? n : null;
 }
 
-export function TaxStep({ shop, go }: StepProps) {
+export function TaxStep({ shop, go, inSettings }: StepProps) {
   const [vat, setVat] = useState(shop?.vatRegistered ?? false);
   const [vatRate, setVatRate] = useState(shop?.taxRates ? String(shop.taxRates.vat) : '');
   const [ssclRate, setSsclRate] = useState(shop?.taxRates ? String(shop.taxRates.sscl) : '');
@@ -177,12 +177,14 @@ export function TaxStep({ shop, go }: StepProps) {
         <ErrorAlert error={touched && invalid ? 'Fix the highlighted fields to continue.' : error} />
 
         <div className="setup__actions">
-          <button type="button" className="btn btn--ghost" onClick={() => go(2)}>
-            <Icon name="arrowLeft" /> Back
-          </button>
+          {!inSettings && (
+            <button type="button" className="btn btn--ghost" onClick={() => go(2)}>
+              <Icon name="arrowLeft" /> Back
+            </button>
+          )}
           <span className="spacer" />
           <button type="submit" className="btn btn--primary btn--lg" disabled={busy}>
-            {busy ? 'Saving…' : 'Continue to staff'} <Icon name="arrowRight" />
+            {busy ? 'Saving…' : inSettings ? 'Save changes' : 'Continue to staff'} {!inSettings && <Icon name="arrowRight" />}
           </button>
         </div>
       </div>

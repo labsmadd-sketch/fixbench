@@ -12,3 +12,10 @@ createRoot(document.getElementById('root')!).render(
     <App />
   </StrictMode>,
 );
+
+// Installable app (PWA): only in real builds, never against the local emulators.
+if (import.meta.env.PROD && import.meta.env.VITE_USE_EMULATORS !== 'true' && 'serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => undefined);
+  });
+}

@@ -272,6 +272,16 @@ describe('quotes', () => {
   });
 });
 
+describe('reports and export', () => {
+  it('staff read history, notes and stock movements across all records; strangers do not', async () => {
+    for (const group of ['history', 'notes', 'movements']) {
+      await assertSucceeds(getDocs(collectionGroup(as('manager'), group)));
+      await assertFails(getDocs(collectionGroup(as('stranger'), group)));
+      await assertFails(getDocs(collectionGroup(as('gone'), group)));
+    }
+  });
+});
+
 describe('public status page', () => {
   it('allows reading one job by token but not listing', async () => {
     const anon = env.unauthenticatedContext().firestore();

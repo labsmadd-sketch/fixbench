@@ -15,7 +15,7 @@ const PRESETS = [
   { name: 'Sky', hex: '#0369A1' },
 ];
 
-export function BrandStep({ shop, go }: StepProps) {
+export function BrandStep({ shop, go, inSettings }: StepProps) {
   const [logo, setLogo] = useState<string | null>(shop?.logo ?? null);
   const [logoColors, setLogoColors] = useState<string[]>([]);
   const [brand, setBrand] = useState((isHex(shop?.brandColor) ? shop!.brandColor! : DEFAULT_BRAND).toUpperCase());
@@ -157,12 +157,14 @@ export function BrandStep({ shop, go }: StepProps) {
         <ErrorAlert error={error} />
 
         <div className="setup__actions">
-          <button type="button" className="btn btn--ghost" onClick={() => go(1)}>
-            <Icon name="arrowLeft" /> Back
-          </button>
+          {!inSettings && (
+            <button type="button" className="btn btn--ghost" onClick={() => go(1)}>
+              <Icon name="arrowLeft" /> Back
+            </button>
+          )}
           <span className="spacer" />
           <button type="button" className="btn btn--primary btn--lg" disabled={busy} onClick={save}>
-            {busy ? 'Saving…' : 'Continue to tax and numbering'} <Icon name="arrowRight" />
+            {busy ? 'Saving…' : inSettings ? 'Save for all staff' : 'Continue to tax and numbering'} {!inSettings && <Icon name="arrowRight" />}
           </button>
         </div>
       </div>

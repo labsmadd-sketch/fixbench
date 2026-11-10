@@ -1,14 +1,15 @@
 import { FirebaseError } from 'firebase/app';
+import { sendPasswordResetEmail } from 'firebase/auth';
 import { doc, setDoc, updateDoc } from 'firebase/firestore';
 import { useState, type FormEvent } from 'react';
 import { useSession } from '../../app/session';
 import { Icon } from '../../components/Icon';
-import { db } from '../../lib/firebase';
+import { auth, db } from '../../lib/firebase';
 import { createStaffLogin, staffLoginError, temporaryPassword } from '../../lib/staffAccounts';
 import { useOnline } from '../../lib/useOnline';
 import { ROLE_LABEL, type Role } from '../../types';
 import { ErrorAlert, Field, firstName, initials, StepError, StepIntro, useSave, type StepProps } from './shared';
-import { useStaff } from '../../lib/useStaff';
+import { useStaff, type StaffMember } from '../../lib/useStaff';
 
 type StaffRole = Exclude<Role, 'owner'>;
 
@@ -35,7 +36,7 @@ interface Added {
   password: string;
 }
 
-export function StaffStep({ go }: StepProps) {
+export function StaffStep({ go, inSettings }: StepProps) {
   const { user } = useSession();
   const { staff } = useStaff();
   const online = useOnline();
@@ -106,7 +107,7 @@ export function StaffStep({ go }: StepProps) {
   return (
     <div className="setup__grid">
       <div className="setup__main">
-        <StepIntro title="Who works in the shop?">
+        <StepIntro title={inSettings ? 'Staff and roles' : 'Who works in the shop?'}>
           Each person gets their own sign-in, so the history shows who did what.
         </StepIntro>
 
@@ -121,6 +122,7 @@ export function StaffStep({ go }: StepProps) {
                 </strong>
                 <span>{s.email}</span>
               </span>
+              {inSettings && s.uid !== user?.uid && <StaffActions member={s} onError={setRoleError} />}
               {s.role === 'owner' ? (
                 <span className="badge">Owner</span>
               ) : (
@@ -188,7 +190,7 @@ export function StaffStep({ go }: StepProps) {
           </div>
         </form>
 
-        <div className="setup__actions">
+        {!inSettings && <div className="setup__actions">
           <button type="button" className="btn btn--ghost" onClick={() => go(3)}>
             <Icon name="arrowLeft" /> Back
           </button>
@@ -201,7 +203,7 @@ export function StaffStep({ go }: StepProps) {
           <button type="button" className="btn btn--primary btn--lg" onClick={() => go(5)} disabled={others.length === 0}>
             Continue <Icon name="arrowRight" />
           </button>
-        </div>
+        </div>}
       </div>
 
       <aside className="setup__aside" aria-label="What each role can do">
@@ -235,3 +237,38 @@ export function StaffStep({ go }: StepProps) {
     </div>
   );
 }
+
+/** Settings only: turn an account off or on, or email a password-reset link. */
+function StaffActions({ member, onError }: { member: StaffMember; onError: (e: string | null) => void }) {
+  const [sent, setSent] = useState(false);
+  return (
+    <span style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+      {!member.active && <span className="tag" style={{ color: 'var(--danger)' }}>Turned off</span>}
+      <button
+        type="button"
+        className="link-button"
+        onClick={() => {
+          onError(null);
+          updateDoc(doc(db, 'users', member.uid), { active: !member.active }).catch(() => onError('Could not change the account.'));
+        }}
+      >
+        {member.active ? 'Turn off' : 'Turn on'}
+      </button>
+      <button
+        type="button"
+        className="link-button"
+        disabled={sent}
+        onClick={() => {
+          onError(null);
+          sendPasswordResetEmail(auth, member.email).then(
+            () => setSent(true),
+            () => onError('Could not send the reset email.'),
+          );
+        }}
+      >
+        {sent ? 'Reset email sent' : 'Reset password'}
+      </button>
+    </span>
+  );
+}
+

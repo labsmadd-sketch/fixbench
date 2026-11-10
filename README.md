@@ -34,7 +34,7 @@ Sign in as `owner@demo.test`, `desk@demo.test` or `tech@demo.test` with `passwor
 | `npm run seed` | Staff, shop settings, demo customers, devices and tickets in the emulators |
 | `npm test` | Unit tests: theming contrast, phone numbers, money, search, dates, statuses |
 | `npm run test:rules` | Security rules tests against the Firestore emulator |
-| `npm run test:e2e` | Browser tests of customers, intake, tickets, invoices, payments, quotes, stock and roles (needs `emulators` and `dev` running; resets emulator data) |
+| `npm run test:e2e` | Browser tests of customers, intake, tickets, invoices, payments, quotes, stock, reports, settings and roles (needs `emulators` and `dev` running; resets emulator data) |
 | `npm run typecheck` | TypeScript, no output |
 | `npm run build:shop shop-<alias>` | Production build using `.env.shop-<alias>` |
 | `npm run setup:shop -- --account <google> --alias <name> --project-id <id> --owner-email … --owner-name …` | Create and deploy a new shop with the given Google account (see `scripts/setup-shop.mjs`; no service-account key needed) |
@@ -83,7 +83,13 @@ Phase 4 (Quotes, inventory, counter sales): quotes from a job with recommended a
 items, sent on WhatsApp, customer's answer moves the job on, approved quote fills the invoice;
 inventory with stock value, low-stock badge and alerts, received/damaged/count adjustments and a
 movement history; stock deducted when invoicing and returned on void; walk-in counter sales.
-Reports and settings are placeholders that name their roadmap phase.
+Phase 5 (Reports, settings, polish): reports for any period up to 92 days (money taken per day,
+invoiced, outstanding via aggregation queries, payment methods, top parts, jobs marked ready, CSV);
+Settings reusing the wizard screens, plus staff turn off/on and password reset; "Export all data"
+as JSON (device passwords left out); installable app (manifest, icons, offline app shell).
+
+Not in v1.0: editing the job status list (statuses drive the rules, reports and public page, so
+they are fixed for now) and restoring a backup from the app (needs a careful, rules-aware import).
 
 ## Shops
 

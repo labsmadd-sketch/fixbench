@@ -20,7 +20,8 @@ npm run dev              # terminal 2 — app at http://localhost:5173
 ```
 
 Sign in as `owner@demo.test` / `password123` (see the seed output for the other roles).
-The owner is sent to the setup wizard first; press **Finish setup** to reach the app.
+The owner is sent to the five-step setup wizard first. Run `npm run seed` again to reset
+the shop to "not set up" and go through the wizard again.
 
 ## Scripts
 
@@ -37,7 +38,7 @@ The owner is sent to the setup wizard first; press **Finish setup** to reach the
 
 ## Layout
 
-```
+```text
 src/
   app/          session (auth + staff record + shop settings), route guards, layout
   theme/        brand colour → CSS variables, global styles
@@ -60,4 +61,6 @@ scripts/        setup-shop.mjs, seed-emulator.mjs
 ## Status
 
 Phase 1 (Foundations): sign-in, roles, theming, layout, rules, emulator seed, setup script draft, CI.
+Setup wizard: all five steps (shop details, logo and colours, tax and numbering, add staff, ready),
+plus the first sign-in password change for staff given a temporary password.
 Other screens are placeholders that name the roadmap phase that builds them.

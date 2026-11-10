@@ -61,11 +61,40 @@ describe('access', () => {
   });
 });
 
+describe('first sign-in password change', () => {
+  it('lets staff clear only their own mustChangePassword flag', async () => {
+    await env.withSecurityRulesDisabled((ctx) =>
+      updateDoc(doc(ctx.firestore(), 'users', 'desk'), { mustChangePassword: true }),
+    );
+    await assertFails(updateDoc(doc(as('desk'), 'users', 'desk'), { mustChangePassword: false, role: 'owner' }));
+    await assertFails(updateDoc(doc(as('desk'), 'users', 'tech'), { mustChangePassword: false }));
+    await assertFails(updateDoc(doc(as('desk'), 'users', 'desk'), { mustChangePassword: true, active: true }));
+    await assertSucceeds(updateDoc(doc(as('desk'), 'users', 'desk'), { mustChangePassword: false }));
+  });
+
+  it('lets only the owner manage staff records', async () => {
+    await assertFails(setDoc(doc(as('manager'), 'users', 'new'), { name: 'x', email: 'x@test', role: 'owner', active: true }));
+    await assertSucceeds(
+      setDoc(doc(as('owner'), 'users', 'new'), { name: 'x', email: 'x@test', role: 'frontdesk', active: true, mustChangePassword: true }),
+    );
+  });
+});
+
 describe('numbering', () => {
   it('only allows +1 on one counter', async () => {
     await assertSucceeds(updateDoc(doc(as('desk'), 'counters', '2026'), { ticket: 6 }));
     await assertFails(updateDoc(doc(as('desk'), 'counters', '2026'), { ticket: 8 }));
     await assertFails(updateDoc(doc(as('desk'), 'counters', '2026'), { ticket: 7, invoice: 10 }));
+  });
+
+  it('lets only the owner start a new counter above 1, and only once', async () => {
+    await assertFails(setDoc(doc(as('desk'), 'counters', 'all'), { invoice: 500 }));
+    await assertSucceeds(setDoc(doc(as('desk'), 'counters', '2027'), { ticket: 1 }));
+    await assertFails(setDoc(doc(as('owner'), 'counters', 'all'), { invoice: -1 }));
+    await assertFails(setDoc(doc(as('owner'), 'counters', 'all'), { invoice: 500, extra: 1 }));
+    await assertSucceeds(setDoc(doc(as('owner'), 'counters', 'all'), { invoice: 500 }));
+    // Existing counters can still only go up by one, even for the owner.
+    await assertFails(setDoc(doc(as('owner'), 'counters', '2026'), { ticket: 5, quote: 2, invoice: 900 }));
   });
 
   it('technicians can number quotes but not invoices', async () => {

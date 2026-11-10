@@ -1,11 +1,8 @@
 import { doc, runTransaction, type Transaction } from 'firebase/firestore';
 import { db } from './firebase';
+import { counterId, formatNumber, type NumberKind, type RestartRule } from './numberFormat';
 
-export type NumberKind = 'ticket' | 'quote' | 'invoice';
-
-export function formatNumber(prefix: string, year: number, n: number): string {
-  return `${prefix}-${year}-${String(n).padStart(4, '0')}`;
-}
+export { counterId, formatNumber, isValidPrefix, type NumberKind, type RestartRule } from './numberFormat';
 
 /**
  * Issue the next number and write the numbered document in ONE transaction,
@@ -14,25 +11,25 @@ export function formatNumber(prefix: string, year: number, n: number): string {
  * Transactions need a connection: callers should block "Create ticket" /
  * "Issue invoice" while offline (see useOnline) rather than queue the write.
  *
- *   const ticketNo = await issueNumbered('ticket', 'T', (tx, no) => {
+ *   const ticketNo = await issueNumbered('ticket', shop.prefixes.ticket, shop.numberRestart, (tx, no) => {
  *     tx.set(doc(collection(db, 'tickets')), { ticketNo: no, ... });
  *   });
  */
 export async function issueNumbered(
   kind: NumberKind,
   prefix: string,
+  restart: RestartRule | undefined,
   write: (tx: Transaction, number: string) => void,
   now: Date = new Date(),
 ): Promise<string> {
-  const year = now.getFullYear();
-  const counterRef = doc(db, 'counters', String(year));
+  const counterRef = doc(db, 'counters', counterId(restart, now));
 
   return runTransaction(db, async (tx) => {
     const snap = await tx.get(counterRef);
     const next = ((snap.exists() ? (snap.data()[kind] as number | undefined) : undefined) ?? 0) + 1;
     if (snap.exists()) tx.update(counterRef, { [kind]: next });
     else tx.set(counterRef, { [kind]: next });
-    const number = formatNumber(prefix, year, next);
+    const number = formatNumber(prefix, next, restart, now);
     write(tx, number);
     return number;
   });

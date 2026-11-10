@@ -34,16 +34,25 @@ service cloud.firestore {
       allow write: if isOwner();
     }
 
-    // One counter document per year: { ticket, quote, invoice }.
-    // Numbers can only ever go up by exactly one, one field at a time.
+    // Counter documents: /counters/{year} (yearly restart) or /counters/all
+    // (never restart), each { ticket, quote, invoice }.
+    // Numbers can only ever go up by exactly one, one field at a time. The owner
+    // may create the document with higher starting values (moving from another
+    // system), but only while it does not exist yet.
     match /counters/{year} {
       function bump(k) { return request.resource.data.get(k, 0) == resource.data.get(k, 0) + 1; }
       function startsAt(k) { return request.resource.data.get(k, 0) in [0, 1]; }
       function shapeOk() { return request.resource.data.keys().hasOnly(['ticket', 'quote', 'invoice']); }
+      function nonNeg(k) {
+        return !(k in request.resource.data)
+          || (request.resource.data[k] is int && request.resource.data[k] >= 0);
+      }
 
       allow read: if isStaff();
-      allow create: if isStaff() && shapeOk()
-        && startsAt('ticket') && startsAt('quote') && startsAt('invoice');
+      allow create: if isStaff() && shapeOk() && (
+           (startsAt('ticket') && startsAt('quote') && startsAt('invoice'))
+        || (isOwner() && nonNeg('ticket') && nonNeg('quote') && nonNeg('invoice'))
+      );
       allow update: if isStaff() && shapeOk() && (
            (onlyChanges(['ticket'])  && bump('ticket')  && isDesk())
         || (onlyChanges(['quote'])   && bump('quote'))
@@ -58,6 +67,10 @@ service cloud.firestore {
       allow get: if signedIn() && request.auth.uid == uid;
       allow read: if isStaff();
       allow write: if isOwner();
+      // After a temporary password, staff set their own and clear this flag — nothing else.
+      allow update: if signedIn() && request.auth.uid == uid
+        && onlyChanges(['mustChangePassword'])
+        && request.resource.data.mustChangePassword == false;
     }
 
     // ---------- customers and devices ----------

@@ -22,6 +22,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<StaffProfile | null>(null);
   const [profileReady, setProfileReady] = useState(false);
   const [shop, setShop] = useState<ShopSettings | null>(null);
+  const [shopReady, setShopReady] = useState(false);
   const [publicShop, setPublicShop] = useState<PublicShop | null>(null);
 
   // Public branding: available before sign-in.
@@ -53,6 +54,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!user) return;
     setProfileReady(false);
+    setShopReady(false);
     const offProfile = onSnapshot(
       doc(db, 'users', user.uid),
       (snap) => {
@@ -66,8 +68,15 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     );
     const offShop = onSnapshot(
       doc(db, 'settings', 'shop'),
-      (snap) => setShop(snap.exists() ? (snap.data() as ShopSettings) : null),
-      () => setShop(null),
+      (snap) => {
+        setShop(snap.exists() ? (snap.data() as ShopSettings) : null);
+        setShopReady(true);
+      },
+      () => {
+        // Turned-off or unknown accounts cannot read settings.
+        setShop(null);
+        setShopReady(true);
+      },
     );
     return () => {
       offProfile();
@@ -82,7 +91,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, [brand]);
 
   const value: Session = {
-    loading: !authReady || (!!user && !profileReady),
+    loading: !authReady || (!!user && (!profileReady || !shopReady)),
     user,
     profile,
     shop,

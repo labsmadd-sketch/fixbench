@@ -1,5 +1,6 @@
 import type { ReactNode } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
+import { ChangePasswordPage } from '../features/auth/ChangePasswordPage';
 import type { Role } from '../types';
 import { useSession } from './session';
 
@@ -25,6 +26,7 @@ export function RequireStaff({ children }: { children: ReactNode }) {
       </FullPageMessage>
     );
   }
+  if (profile.mustChangePassword) return <ChangePasswordPage />;
   if (profile.role === 'owner' && !shop?.setupComplete && !location.pathname.startsWith('/setup')) {
     return <Navigate to="/setup" replace />;
   }

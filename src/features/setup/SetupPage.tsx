@@ -1,62 +1,75 @@
-import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
-import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { RequireRole } from '../../app/guards';
 import { useSession } from '../../app/session';
-import { db } from '../../lib/firebase';
+import { BrandStep } from './BrandStep';
+import { ReadyStep } from './ReadyStep';
+import { initials } from './shared';
+import { ShopStep } from './ShopStep';
+import { StaffStep } from './StaffStep';
+import { TaxStep } from './TaxStep';
 
-const STEPS = ['Shop details', 'Logo and colours', 'Tax and numbering', 'Add staff', 'Ready'];
+const STEPS = [
+  { title: 'Shop details', Component: ShopStep },
+  { title: 'Logo and colours', Component: BrandStep },
+  { title: 'Tax and numbering', Component: TaxStep },
+  { title: 'Add staff', Component: StaffStep },
+  { title: 'Ready', Component: ReadyStep },
+];
 
 /**
- * First-run wizard. Phase 5 builds the five steps from the design canvas;
- * for now the owner can finish setup so the rest of the app is reachable.
+ * First-run wizard (owner only). Each step saves when you continue, so closing
+ * the tab loses nothing. The step lives in the URL (?step=3) so "Edit" links
+ * and the browser back button work.
  */
 export function SetupPage() {
   const { shop } = useSession();
-  const navigate = useNavigate();
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [params, setParams] = useSearchParams();
+  const raw = Number(params.get('step'));
+  const step = Number.isInteger(raw) && raw >= 1 && raw <= STEPS.length ? raw : 1;
+  const headingRef = useRef<HTMLDivElement>(null);
 
-  async function finish() {
-    setBusy(true);
-    setError(null);
-    try {
-      await setDoc(doc(db, 'settings', 'shop'), { setupComplete: true, updatedAt: serverTimestamp() }, { merge: true });
-      navigate('/', { replace: true });
-    } catch {
-      setError('Could not save. Check your connection and try again.');
-    } finally {
-      setBusy(false);
-    }
-  }
+  const go = (n: number) => setParams({ step: String(n) });
+
+  // Move focus to the new step for keyboard and screen-reader users.
+  useEffect(() => {
+    window.scrollTo({ top: 0 });
+    headingRef.current?.querySelector('h1')?.focus();
+  }, [step]);
+
+  const { Component } = STEPS[step - 1];
+  const name = shop?.name || 'your shop';
 
   return (
     <RequireRole roles={['owner']}>
       <div className="setup">
-        <ol className="setup__steps" aria-label="Setup steps">
-          {STEPS.map((s, i) => (
-            <li key={s} aria-current={i === 0 ? 'step' : undefined}>
-              <span className="setup__bar" />
-              {i + 1} · {s}
-            </li>
-          ))}
-        </ol>
-        <section className="card stack setup__card">
-          <h1 className="h1">Set up {shop?.name ?? 'your shop'}</h1>
-          <p className="muted">
-            The full five-step wizard arrives in Phase 5. Until then, shop details come from the seed or setup script, and you
-            can finish setup to use the app.
-          </p>
+        <header className="setup__head">
+          <span className="setup__mark" aria-hidden="true">
+            {shop?.logo ? <img src={shop.logo} alt="" /> : initials(shop?.name || 'FixBench')}
+          </span>
           <div>
-            <button className="btn btn--primary btn--lg" onClick={() => void finish()} disabled={busy}>
-              {busy ? 'Saving…' : 'Finish setup'}
-            </button>
+            <p className="setup__title">Set up {name}</p>
+            <p className="muted" style={{ fontSize: 13 }}>
+              About 5 minutes · you can change all of this later in Settings
+            </p>
           </div>
-          {error && (
-            <div className="alert alert--error" role="alert">
-              {error}
-            </div>
-          )}
+        </header>
+
+        <nav style={{ width: '100%', maxWidth: 1040 }} aria-label="Setup steps">
+          <ol className="setup__steps">
+            {STEPS.map((s, i) => (
+              <li key={s.title} aria-current={i + 1 === step ? 'step' : undefined} className={i + 1 < step ? 'is-done' : undefined}>
+                <button type="button" className="setup__step-button" onClick={() => go(i + 1)}>
+                  <span className="setup__bar" />
+                  {i + 1} · {s.title}
+                </button>
+              </li>
+            ))}
+          </ol>
+        </nav>
+
+        <section className="card setup__card" ref={headingRef} key={step}>
+          <Component shop={shop} go={go} />
         </section>
       </div>
     </RequireRole>

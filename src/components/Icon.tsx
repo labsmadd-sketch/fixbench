@@ -11,6 +11,12 @@ const PATHS = {
   plus: 'M12 5v14M5 12h14',
   logout: 'M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3M10 17l5-5-5-5M15 12H3',
   check: 'm5 12 5 5 9-10',
+  copy: 'M9 9h11v11H9zM5 15H4V4h11v1',
+  refresh: 'M20 11a8 8 0 0 0-14.7-4.4L4 8M4 4v4h4M4 13a8 8 0 0 0 14.7 4.4L20 16M20 20v-4h-4',
+  upload: 'M12 16V4M7 9l5-5 5 5M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3',
+  printer: 'M7 9V3h10v6M7 17H4v-7h16v7h-3M7 14h10v7H7z',
+  arrowLeft: 'M19 12H5M11 18l-6-6 6-6',
+  arrowRight: 'M5 12h14M13 6l6 6-6 6',
 } as const;
 
 export type IconName = keyof typeof PATHS;

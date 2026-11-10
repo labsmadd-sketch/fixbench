@@ -100,13 +100,14 @@ initializeApp({ credential: applicationDefault(), projectId });
 const tempPassword = randomBytes(9).toString('base64url');
 const owner = await getAuth().createUser({ email: args['owner-email'], password: tempPassword, displayName: args['owner-name'] });
 const db = getFirestore();
-await db.doc(`users/${owner.uid}`).set({ name: args['owner-name'], email: args['owner-email'], role: 'owner', active: true });
+await db.doc(`users/${owner.uid}`).set({ name: args['owner-name'], email: args['owner-email'], role: 'owner', active: true, mustChangePassword: true });
 await db.doc('settings/shop').set({
   name: '',
   phone: '',
   currency: 'LKR',
   vatRegistered: false,
   prefixes: { ticket: 'T', quote: 'Q', invoice: 'INV' },
+  numberRestart: 'yearly',
   plan: 'spark',
   setupComplete: false,
   updatedAt: FieldValue.serverTimestamp(),

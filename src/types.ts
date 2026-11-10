@@ -1,5 +1,6 @@
 import type { Timestamp } from 'firebase/firestore';
 import type { Cents } from './lib/money';
+import type { RestartRule } from './lib/numberFormat';
 
 export type Role = 'owner' | 'manager' | 'technician' | 'frontdesk';
 
@@ -16,6 +17,8 @@ export interface StaffProfile {
   email: string;
   role: Role;
   active: boolean;
+  /** Set when the owner creates the account with a temporary password. */
+  mustChangePassword?: boolean;
 }
 
 /** /settings/shop */
@@ -31,7 +34,11 @@ export interface ShopSettings {
   brandColor?: string; // hex
   currency: 'LKR';
   vatRegistered: boolean;
+  /** Percent, typed by the owner (rates change; confirm with the IRD). */
+  taxRates?: { vat: number; sscl: number };
   prefixes: { ticket: string; quote: string; invoice: string };
+  /** 'yearly' → T-2026-0001 from /counters/2026; 'never' → T-0001 from /counters/all. */
+  numberRestart?: RestartRule;
   terms?: string;
   plan: 'spark' | 'blaze';
   setupComplete: boolean;

@@ -3,8 +3,10 @@ import { useSession } from '../../app/session';
 import { Icon } from '../../components/Icon';
 import { StatusPill } from '../../components/StatusPill';
 import { daysFromToday, shortDate } from '../../lib/dates';
+import { formatLKR } from '../../lib/money';
 import { useQuery } from '../../lib/useFirestore';
-import type { Ticket } from '../../types';
+import { PAYMENT_METHOD_LABEL, type Invoice, type Payment, type PaymentMethod, type Ticket } from '../../types';
+import { invoicesQuery, paymentsSinceQuery } from '../invoices/data';
 import { openTicketsQuery, type TicketRow } from '../tickets/data';
 import { isOverdue } from '../tickets/TicketsPage';
 
@@ -13,7 +15,7 @@ function greeting(now = new Date()) {
   return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : 'Good evening';
 }
 
-/** Dashboard from the open tickets (one live query). Money tiles arrive with invoices in Phase 3. */
+/** Dashboard: open tickets for everyone; unpaid balance and today's takings for the counter. */
 export function DashboardPage() {
   const { profile, user } = useSession();
   const navigate = useNavigate();
@@ -22,14 +24,26 @@ export function DashboardPage() {
   const mineOnly = (t: TicketRow) => !isTech || t.assignedTo === user?.uid;
   const all = open.data.filter(mineOnly);
 
-  const today = all.filter((t) => daysFromToday(t.createdAt) === 0);
+  const bookedToday = all.filter((t) => daysFromToday(t.createdAt) === 0);
   const ready = all.filter((t) => t.status === 'ready');
   const overdue = all.filter((t) => isOverdue(t));
   const dueToday = all.filter((t) => t.status !== 'ready' && daysFromToday(t.dueDate) === 0);
 
+  const midnight = new Date();
+  midnight.setHours(0, 0, 0, 0);
+  const unpaid = useQuery<Invoice>(isTech ? null : invoicesQuery('open', 500), 'dash-unpaid');
+  const today = useQuery<Payment>(isTech ? null : paymentsSinceQuery(midnight), `dash-paid-${midnight.getTime()}`);
+  const unpaidTotal = unpaid.data.reduce((s, i) => s + i.balance, 0);
+  const takenTotal = today.data.reduce((s, p) => s + p.amount, 0);
+  const byMethod = (Object.keys(PAYMENT_METHOD_LABEL) as PaymentMethod[])
+    .map((m) => [m, today.data.filter((p) => p.method === m).reduce((s, p) => s + p.amount, 0)] as const)
+    .filter(([, n]) => n > 0)
+    .map(([m, n]) => `${PAYMENT_METHOD_LABEL[m]} ${formatLKR(n).replace('LKR ', '')}`)
+    .join(' · ');
+
   const tiles = [
     { label: isTech ? 'My open jobs' : 'Open jobs', n: all.length, to: '/tickets' },
-    { label: 'Booked in today', n: today.length, to: '/tickets' },
+    { label: 'Booked in today', n: bookedToday.length, to: '/tickets' },
     { label: 'Ready for pickup', n: ready.length, to: '/tickets?f=ready' },
     { label: 'Overdue', n: overdue.length, to: '/tickets?f=overdue', alert: overdue.length > 0 },
   ];
@@ -82,12 +96,27 @@ export function DashboardPage() {
           </Link>
         ))}
       </div>
+      {!isTech && (
+        <div className="stats">
+          <Link to="/invoices" className="stat" style={{ textDecoration: 'none', color: 'inherit' }}>
+            <span>Unpaid balance</span>
+            <strong className="num">{unpaid.loading ? '…' : formatLKR(unpaidTotal)}</strong>
+            <span>
+              {unpaid.data.length} {unpaid.data.length === 1 ? 'invoice' : 'invoices'}
+            </span>
+          </Link>
+          <div className="stat">
+            <span>Taken today</span>
+            <strong className="num">{today.loading ? '…' : formatLKR(takenTotal)}</strong>
+            <span>{byMethod || 'No payments yet today'}</span>
+          </div>
+        </div>
+      )}
       <div className="cards-3">
         {list('Ready for pickup', ready, 'Nothing waiting to be collected.')}
         {list('Overdue', overdue, 'No overdue jobs.')}
         {list('Due today', dueToday, 'Nothing else due today.')}
       </div>
-      <p className="muted" style={{ fontSize: 12 }}>Unpaid balances and today’s takings appear here once invoices arrive (Phase 3).</p>
     </div>
   );
 }

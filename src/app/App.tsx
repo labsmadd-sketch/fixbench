@@ -4,9 +4,11 @@ import { CustomerFormPage } from '../features/customers/CustomerFormPage';
 import { CustomerProfile } from '../features/customers/CustomerProfile';
 import { CustomersPage, NoCustomerSelected } from '../features/customers/CustomersPage';
 import { DashboardPage } from '../features/dashboard/DashboardPage';
+import { InvoiceDetailPage } from '../features/invoices/InvoiceDetailPage';
+import { InvoicesPage } from '../features/invoices/InvoicesPage';
+import { NewInvoicePage } from '../features/invoices/NewInvoicePage';
 import {
   InventoryPage,
-  InvoicesPage,
   NotFoundPage,
   QuotesPage,
   ReportsPage,
@@ -58,6 +60,8 @@ export function App() {
             </Route>
             <Route path="quotes" element={<QuotesPage />} />
             <Route path="invoices" element={<RequireRole roles={[...DESK]}><InvoicesPage /></RequireRole>} />
+            <Route path="invoices/new" element={<RequireRole roles={[...DESK]}><NewInvoicePage /></RequireRole>} />
+            <Route path="invoices/:id" element={<RequireRole roles={[...DESK]}><InvoiceDetailPage /></RequireRole>} />
             <Route path="inventory" element={<InventoryPage />} />
             <Route path="reports" element={<RequireRole roles={['owner', 'manager']}><ReportsPage /></RequireRole>} />
             <Route path="settings" element={<RequireRole roles={['owner']}><SettingsPage /></RequireRole>} />

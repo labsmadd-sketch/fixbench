@@ -10,7 +10,9 @@ import { db } from '../../lib/firebase';
 import { formatAmount } from '../../lib/money';
 import { whatsappLink } from '../../lib/phone';
 import { useDoc, useQuery } from '../../lib/useFirestore';
-import { OPEN_STATUSES, type Customer, type Device, type Ticket } from '../../types';
+import { OPEN_STATUSES, type Customer, type Device, type Invoice, type Ticket } from '../../types';
+import { customerInvoicesQuery } from '../invoices/data';
+import { InvoicePill } from '../invoices/InvoicePill';
 import { addDevice, customerDevicesQuery, customerTicketsQuery, deviceLabel, type DeviceInput } from './data';
 import { DeviceFields, deviceErrors, EMPTY_DEVICE } from './DeviceFields';
 
@@ -24,14 +26,19 @@ export function CustomerProfile() {
   const customer = useDoc<Customer>(doc(db, 'customers', id), `customers/${id}`);
   const devices = useQuery<Device>(customerDevicesQuery(id), `devices-of-${id}`);
   const tickets = useQuery<Ticket>(customerTicketsQuery(id), `tickets-of-${id}`);
-  const [adding, setAdding] = useState(false);
   const desk = profile?.role !== 'technician';
+  // Technicians cannot read invoices (security rules), so only the counter loads them.
+  const invoices = useQuery<Invoice>(desk ? customerInvoicesQuery(id) : null, `invoices-of-${id}`);
+  const [adding, setAdding] = useState(false);
 
   if (customer.loading) return <p className="muted">Loading…</p>;
   const c = customer.data;
   if (!c) return <div className="panel empty">This customer no longer exists.</div>;
 
   const jobs = tickets.data;
+  const live = invoices.data.filter((i) => i.status !== 'void');
+  const spent = live.reduce((s, i) => s + i.paid, 0);
+  const balance = live.reduce((s, i) => s + i.balance, 0);
   const open = jobs.filter((t) => OPEN_STATUSES.includes(t.status));
   const jobsPerDevice = new Map<string, number>();
   for (const t of jobs) jobsPerDevice.set(t.deviceId, (jobsPerDevice.get(t.deviceId) ?? 0) + 1);
@@ -94,10 +101,23 @@ export function CustomerProfile() {
           <span>Last visit</span>
           <strong>{jobs[0] ? shortDate(jobs[0].createdAt) : '—'}</strong>
         </div>
-        <div className="stat">
-          <span>Devices</span>
-          <strong>{devices.data.length}</strong>
-        </div>
+        {desk ? (
+          <>
+            <div className="stat">
+              <span>Total spent</span>
+              <strong className="num">{formatAmount(spent)}</strong>
+            </div>
+            <div className="stat">
+              <span>Balance due</span>
+              <strong className={`num ${balance > 0 ? 'danger-text' : ''}`}>{formatAmount(balance)}</strong>
+            </div>
+          </>
+        ) : (
+          <div className="stat">
+            <span>Devices</span>
+            <strong>{devices.data.length}</strong>
+          </div>
+        )}
       </div>
 
       <section className="panel">
@@ -168,6 +188,44 @@ export function CustomerProfile() {
           </div>
         )}
       </section>
+
+      {desk && invoices.data.length > 0 && (
+        <section className="panel">
+          <h2>Invoices · {invoices.data.length}</h2>
+          <div className="table-wrap">
+            <table className="data" style={{ border: 0 }}>
+              <thead>
+                <tr>
+                  <th>Invoice</th>
+                  <th>Status</th>
+                  <th className="right">Total</th>
+                  <th className="right">Balance</th>
+                </tr>
+              </thead>
+              <tbody>
+                {invoices.data.map((i) => (
+                  <tr key={i.id} onClick={() => navigate(`/invoices/${i.id}`)}>
+                    <td>
+                      <Link className="row-link" to={`/invoices/${i.id}`} onClick={(e) => e.stopPropagation()}>
+                        {i.invoiceNo}
+                      </Link>
+                      <span className="sub">
+                        {shortDate(i.issuedAt)}
+                        {i.ticketNo ? ` · ${i.ticketNo}` : ''}
+                      </span>
+                    </td>
+                    <td>
+                      <InvoicePill status={i.status} />
+                    </td>
+                    <td className="right num">{formatAmount(i.total)}</td>
+                    <td className="right num">{formatAmount(i.balance)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
     </div>
   );
 }

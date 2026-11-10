@@ -142,30 +142,57 @@ service cloud.firestore {
     }
 
     // ---------- invoices and payments ----------
+    // Money always adds up: balance == total - paid, the status matches the
+    // balance, and `paid` only ever rises by the amount of a payment document
+    // written in the same batch (named by lastPaymentId).
     match /invoices/{id} {
+      function next() { return request.resource.data; }
+      function paymentAfter(pid) {
+        return getAfter(/databases/$(database)/documents/invoices/$(id)/payments/$(pid)).data;
+      }
+      function sumsOk(d) {
+        return d.total is int && d.paid is int && d.balance is int
+          && d.total >= 0 && d.paid >= 0 && d.paid <= d.total
+          && d.balance == d.total - d.paid
+          && d.status == (d.balance == 0 ? 'paid' : (d.paid > 0 ? 'partial' : 'unpaid'));
+      }
+
       allow read: if isDesk();
-      allow create: if isDesk() && request.resource.data.status in ['unpaid', 'partial', 'paid'];
-      allow update: if
-           // Taking a payment: only the money fields change.
-           (isDesk() && resource.data.status != 'void'
-              && onlyChanges(['paid', 'balance', 'status', 'updatedAt'])
-              && request.resource.data.status in ['unpaid', 'partial', 'paid'])
-           // Managers may correct an open invoice, but never its number or void it.
-        || (isManager() && resource.data.status != 'void'
-              && request.resource.data.status != 'void'
-              && request.resource.data.invoiceNo == resource.data.invoiceNo)
+      allow create: if isDesk() && sumsOk(next())
+        && (next().paid == 0 || paymentAfter(next().lastPaymentId).amount == next().paid);
+      allow update: if resource.data.status != 'void' && (
+           // Taking a payment: only the money fields change, by exactly one new payment.
+           (isDesk()
+              && onlyChanges(['paid', 'balance', 'status', 'updatedAt', 'lastPaymentId'])
+              && next().lastPaymentId != resource.data.get('lastPaymentId', '')
+              && next().paid == resource.data.paid + paymentAfter(next().lastPaymentId).amount
+              && sumsOk(next()))
+           // Managers may correct an open invoice's lines and totals, never its
+           // number or what has been paid, and never void it.
+        || (isManager()
+              && !request.resource.data.diff(resource.data).affectedKeys()
+                   .hasAny(['invoiceNo', 'paid', 'lastPaymentId', 'customerId', 'ticketId'])
+              && sumsOk(next()))
            // Only the owner voids, and a void is final.
-        || (isOwner() && resource.data.status != 'void'
-              && request.resource.data.status == 'void'
-              && onlyChanges(['status', 'voidReason', 'voidedAt', 'voidedBy', 'updatedAt']));
+        || (isOwner() && next().status == 'void'
+              && onlyChanges(['status', 'voidReason', 'voidedAt', 'voidedBy', 'updatedAt']))
+      );
       // Invoices are never deleted, so the numbering has no gaps.
       allow delete: if false;
 
       match /payments/{payment} {
         allow read: if isDesk();
-        allow create: if isDesk() && byMe() && request.resource.data.amount > 0;
+        // A payment must be the one the invoice update in the same batch points to.
+        allow create: if isDesk() && byMe()
+          && request.resource.data.amount is int && request.resource.data.amount > 0
+          && getAfter(/databases/$(database)/documents/invoices/$(id)).data.lastPaymentId == payment;
         allow update, delete: if false;
       }
+    }
+
+    // "Taken today" on the dashboard reads payments across invoices.
+    match /{path=**}/payments/{payment} {
+      allow read: if isDesk();
     }
 
     // ---------- public job status (QR code on the receipt) ----------

@@ -6,7 +6,7 @@ import {
   type RulesTestEnvironment,
 } from '@firebase/rules-unit-testing';
 import { readFileSync } from 'node:fs';
-import { doc, getDoc, getDocs, collection, setDoc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { doc, getDoc, getDocs, collection, collectionGroup, setDoc, updateDoc, deleteDoc, writeBatch } from 'firebase/firestore';
 import { afterAll, beforeAll, beforeEach, describe, it } from 'vitest';
 
 let env: RulesTestEnvironment;
@@ -44,7 +44,8 @@ beforeEach(async () => {
     await setDoc(doc(db, 'tickets', 't2'), { ticketNo: 'T-2026-0004', status: 'received', assignedTo: 'someone-else' });
     await setDoc(doc(db, 'devices', 'd1', 'secret', 'pin'), { pin: '483920', ticketId: 't1' });
     await setDoc(doc(db, 'devices', 'd2', 'secret', 'pin'), { pin: '111111', ticketId: 't2' });
-    await setDoc(doc(db, 'invoices', 'i1'), { invoiceNo: 'INV-2026-0009', status: 'partial', total: 1850000, paid: 600000, balance: 1250000 });
+    await setDoc(doc(db, 'invoices', 'i1'), { invoiceNo: 'INV-2026-0009', status: 'partial', total: 1850000, paid: 600000, balance: 1250000, lastPaymentId: 'p0' });
+    await setDoc(doc(db, 'invoices', 'i1', 'payments', 'p0'), { amount: 600000, method: 'cash', byUid: 'desk' });
     await setDoc(doc(db, 'publicStatus', 'tok123'), { ticketNo: 'T-2026-0005', status: 'ready' });
   });
 });
@@ -152,19 +153,63 @@ describe('device passwords', () => {
 });
 
 describe('invoices', () => {
-  it('front desk can take a payment but not change the total', async () => {
-    await assertSucceeds(updateDoc(doc(as('desk'), 'invoices', 'i1'), { paid: 1850000, balance: 0, status: 'paid' }));
-    await assertFails(updateDoc(doc(as('desk'), 'invoices', 'i1'), { total: 100 }));
+  const pay = (who: keyof typeof STAFF, pid: string, amount: number, inv: Record<string, unknown>) => {
+    const db = as(who);
+    const batch = writeBatch(db);
+    batch.set(doc(db, 'invoices', 'i1', 'payments', pid), { amount, method: 'cash', byUid: who });
+    batch.update(doc(db, 'invoices', 'i1'), { ...inv, lastPaymentId: pid });
+    return batch.commit();
+  };
+
+  it('a payment raises paid by exactly its amount, with a matching balance and status', async () => {
+    await assertFails(pay('desk', 'p1', 1000, { paid: 1850000, balance: 0, status: 'paid' }));
+    await assertFails(pay('desk', 'p1', 500000, { paid: 1100000, balance: 750000, status: 'paid' }));
+    await assertFails(pay('desk', 'p1', 2000000, { paid: 2600000, balance: -750000, status: 'paid' }));
+    await assertSucceeds(pay('desk', 'p1', 500000, { paid: 1100000, balance: 750000, status: 'partial' }));
+    await assertSucceeds(pay('desk', 'p2', 750000, { paid: 1850000, balance: 0, status: 'paid' }));
   });
 
-  it('only the owner voids, and nobody deletes', async () => {
+  it('payments and invoice updates only happen together', async () => {
+    await assertFails(setDoc(doc(as('desk'), 'invoices', 'i1', 'payments', 'lonely'), { amount: 100, byUid: 'desk' }));
+    await assertFails(updateDoc(doc(as('desk'), 'invoices', 'i1'), { paid: 1850000, balance: 0, status: 'paid' }));
+    await assertFails(updateDoc(doc(as('desk'), 'invoices', 'i1'), { total: 100 }));
+    await assertFails(pay('tech', 'p1', 500000, { paid: 1100000, balance: 750000, status: 'partial' }));
+  });
+
+  it('a new invoice may include its advance payment', async () => {
+    const db = as('desk');
+    const ok = writeBatch(db);
+    ok.set(doc(db, 'invoices', 'i2'), { invoiceNo: 'INV-2026-0010', total: 1000000, paid: 300000, balance: 700000, status: 'partial', lastPaymentId: 'adv' });
+    ok.set(doc(db, 'invoices', 'i2', 'payments', 'adv'), { amount: 300000, method: 'cash', byUid: 'desk' });
+    await assertSucceeds(ok.commit());
+
+    const bad = writeBatch(db);
+    bad.set(doc(db, 'invoices', 'i3'), { invoiceNo: 'INV-2026-0011', total: 1000000, paid: 300000, balance: 700000, status: 'partial', lastPaymentId: 'adv' });
+    bad.set(doc(db, 'invoices', 'i3', 'payments', 'adv'), { amount: 100, method: 'cash', byUid: 'desk' });
+    await assertFails(bad.commit());
+    await assertSucceeds(setDoc(doc(db, 'invoices', 'i4'), { invoiceNo: 'INV-2026-0012', total: 500000, paid: 0, balance: 500000, status: 'unpaid' }));
+    await assertFails(setDoc(doc(db, 'invoices', 'i5'), { invoiceNo: 'INV-2026-0013', total: 500000, paid: 0, balance: 500000, status: 'paid' }));
+  });
+
+  it('managers correct totals but never what was paid', async () => {
+    await assertSucceeds(updateDoc(doc(as('manager'), 'invoices', 'i1'), { total: 1600000, balance: 1000000 }));
+    await assertFails(updateDoc(doc(as('manager'), 'invoices', 'i1'), { paid: 0, balance: 1600000, status: 'unpaid' }));
+    await assertFails(updateDoc(doc(as('manager'), 'invoices', 'i1'), { invoiceNo: 'INV-2026-0099' }));
+    await assertFails(updateDoc(doc(as('desk'), 'invoices', 'i1'), { total: 1600000, balance: 1000000 }));
+  });
+
+  it('only the owner voids, a void is final, and nobody deletes', async () => {
     await assertFails(updateDoc(doc(as('manager'), 'invoices', 'i1'), { status: 'void', voidReason: 'x' }));
     await assertSucceeds(updateDoc(doc(as('owner'), 'invoices', 'i1'), { status: 'void', voidReason: 'Duplicate' }));
+    await assertFails(pay('desk', 'p1', 500000, { paid: 1100000, balance: 750000, status: 'partial' }));
+    await assertFails(updateDoc(doc(as('owner'), 'invoices', 'i1'), { status: 'partial' }));
     await assertFails(deleteDoc(doc(as('owner'), 'invoices', 'i1')));
   });
 
-  it('technicians cannot read invoices', async () => {
+  it('technicians cannot read invoices or payments', async () => {
     await assertFails(getDoc(doc(as('tech'), 'invoices', 'i1')));
+    await assertFails(getDocs(collectionGroup(as('tech'), 'payments')));
+    await assertSucceeds(getDocs(collectionGroup(as('desk'), 'payments')));
   });
 });
 

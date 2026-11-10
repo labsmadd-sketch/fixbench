@@ -7,10 +7,6 @@ export const QuotesPage = () => (
   <ComingSoon title="Quotes" phase="Phase 4 · week 5" points={['Recommended and optional items', 'WhatsApp approval message', 'Convert to invoice']} />
 );
 
-export const InvoicesPage = () => (
-  <ComingSoon title="Invoices and sales" phase="Phase 3 · week 4" points={['Numbered invoices, partial payments, void (owner)', 'Counter sales', 'A4 and 80mm printing']} />
-);
-
 export const InventoryPage = () => (
   <ComingSoon title="Inventory" phase="Phase 4 · week 5" points={['Stock deducted in the invoice transaction', 'Low-stock alerts', 'Stock movements']} />
 );

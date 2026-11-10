@@ -169,7 +169,7 @@ for (const [deviceId, problem, status, tech, booked, due, estimate, accessories,
   await db.doc(`tickets/${id}`).set({
     ticketNo, customerId, customerName: customer[1], customerPhone: customer[2], deviceId, deviceLabel, deviceType: type,
     deviceSerial: serial, problem, accessories, condition, conditionNotes: '', diagnosis: '', status,
-    assignedTo: tech?.uid ?? null, assignedName: tech?.name ?? null, estimate: estimate ? estimate * 100 : null, advance: null,
+    assignedTo: tech?.uid ?? null, assignedName: tech?.name ?? null, estimate: estimate ? estimate * 100 : null, advance: deviceId === 'd-kasun-dell' ? 600000 : null,
     dueDate: at(due, 18), hasPin: !!pin && !closed, publicToken: t, createdBy: desk.uid, createdByName: desk.name,
     createdAt: at(booked, 9, 30 + n), updatedAt: at(booked + steps.length - 1, 15),
   });
@@ -186,9 +186,28 @@ await db.doc('tickets/t-demo-06/notes/n1').set({
   text: 'Replaced DC jack, reflowed power IC. Ran 2-hour burn-in, battery charging normally. Files backed up to customer’s USB (in bag).',
   byUid: sahan.uid, byName: sahan.name, at: at(-1, 14, 40),
 });
-await db.doc(`counters/${year}`).set({ ticket: TICKETS.length, quote: 0, invoice: 0 });
+// One paid invoice for the collected printer job (t-demo-01).
+{
+  const id = 'i-demo-01';
+  const ticket = (await db.doc('tickets/t-demo-01').get()).data();
+  const total = 350000;
+  await db.doc(`invoices/${id}`).set({
+    invoiceNo: `INV-${year}-0001`, type: 'repair', ticketId: 't-demo-01', ticketNo: ticket.ticketNo, deviceLabel: ticket.deviceLabel,
+    customerId: 'c-kasun', customerName: 'Kasun Fernando', customerPhone: '077 123 4567', customerEmail: 'kasun.f@example.com', customerTin: '',
+    items: [
+      { description: 'Print head cleaning and ink pad reset', kind: 'labour', qty: 1, unitPrice: 250000 },
+      { description: 'Ink bottle, black', kind: 'part', qty: 1, unitPrice: 100000 },
+    ],
+    subtotal: total, discount: 0, sscl: 0, vat: 0, tax: 0, vatRegistered: false, taxRates: null,
+    total, paid: total, balance: 0, status: 'paid', lastPaymentId: 'p1',
+    issuedBy: desk.uid, issuedByName: desk.name, issuedAt: at(-37, 16), updatedAt: at(-37, 16),
+  });
+  await db.doc(`invoices/${id}/payments/p1`).set({ amount: total, method: 'cash', reference: '', note: '', byUid: desk.uid, byName: desk.name, at: at(-37, 16) });
+  await db.doc('tickets/t-demo-01').update({ invoiceId: id, invoiceNo: `INV-${year}-0001` });
+}
+await db.doc(`counters/${year}`).set({ ticket: TICKETS.length, quote: 0, invoice: 1 });
 
-console.log('Seeded demo-fixbench: 8 customers, 8 devices, 8 tickets.');
+console.log('Seeded demo-fixbench: 8 customers, 8 devices, 8 tickets, 1 invoice.');
 console.log(FRESH_SETUP ? 'The owner will be sent through the setup wizard.' : 'Setup is marked complete (use --fresh-setup to see the wizard).');
 console.log(`Sign in at http://localhost:5173 with any of these (password: ${PASSWORD}):`);
 for (const s of STAFF) console.log(`  ${s.role.padEnd(10)} ${s.email}`);

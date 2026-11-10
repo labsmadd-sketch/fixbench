@@ -140,8 +140,12 @@
 
 /* ---------- printed intake receipt (80mm) ---------- */
 .print-only { display: none; }
+/* Named pages: receipts print on 80mm rolls, invoices on A4. */
+@page receipt { size: 80mm auto; margin: 4mm; }
+@page a4 { size: A4; margin: 14mm; }
 @media print {
-  @page { size: 80mm auto; margin: 4mm; }
+  .receipt { page: receipt; }
+  .invoice-print { page: a4; }
   body { background: #fff; }
   .no-print, .sidebar, .topbar { display: none !important; }
   .print-only { display: block !important; }
@@ -156,6 +160,46 @@
   .receipt hr { border: 0; border-top: 1px dashed #000; margin: 6px 0; }
   .receipt img.logo { display: block; margin: 0 auto 4px; width: 40px; height: 40px; object-fit: contain; filter: grayscale(1); }
   .receipt .qr { display: block; margin: 6px auto 2px; width: 30mm; height: 30mm; }
+}
+
+/* ---------- invoices ---------- */
+.lines { display: flex; flex-direction: column; gap: 10px; }
+.line { display: grid; grid-template-columns: minmax(0, 1fr) 110px 70px 120px 100px 36px; gap: 8px; align-items: end; }
+.line .field input, .line .field select { height: 42px; }
+.line .num { text-align: right; }
+.line__amount { text-align: right; padding-bottom: 12px; font-weight: 600; }
+.line__error { grid-column: 1 / -1; }
+.totals { display: flex; flex-direction: column; gap: 8px; }
+.totals .paper__row { font-size: 14px; }
+.totals__grand { font-weight: 800; font-size: 16px !important; border-top: 1px solid var(--line); padding-top: 8px; }
+
+@media print {
+  .invoice-print { width: 100%; font-family: var(--font); font-size: 12px; color: #111; }
+  .invoice-print .num { font-family: var(--mono); }
+  .ip-head { display: flex; justify-content: space-between; gap: 20px; }
+  .ip-logo { width: 56px; height: 56px; object-fit: contain; display: block; margin-bottom: 6px; }
+  .ip-shop { font-size: 18px; font-weight: 800; }
+  .ip-title { text-align: right; }
+  .ip-title__word { font-size: 24px; font-weight: 800; letter-spacing: 0.08em; color: var(--brand-text); }
+  .ip-no { font-family: var(--mono); font-size: 14px; margin-top: 4px; }
+  .ip-rule { border-top: 3px solid var(--brand); margin: 14px 0; }
+  .ip-meta { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-bottom: 16px; }
+  .ip-label { font-size: 10px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; color: #555; margin-bottom: 4px; }
+  .ip-table { width: 100%; border-collapse: collapse; margin-bottom: 14px; }
+  .ip-table th { text-align: left; font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: #555; border-bottom: 1px solid #999; padding: 6px 4px; }
+  .ip-table td { padding: 7px 4px; border-bottom: 1px solid #ddd; }
+  .ip-table th:not(:first-child), .ip-table td:not(:first-child) { text-align: right; font-family: var(--mono); }
+  .ip-bottom { display: flex; justify-content: space-between; gap: 24px; align-items: flex-start; }
+  .ip-payments { font-size: 11px; }
+  .ip-void { font-weight: 800; color: #991b1b; }
+  .ip-terms { margin-top: 18px; font-size: 11px; color: #333; }
+  .ip-foot { margin-top: 18px; font-size: 11px; color: #555; text-align: center; }
+}
+
+@media (max-width: 720px) {
+  .line { grid-template-columns: 1fr 1fr; }
+  .line__desc { grid-column: 1 / -1; }
+  .line__amount { padding-bottom: 0; }
 }
 
 /* ---------- public status page ---------- */

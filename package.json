@@ -18,7 +18,7 @@
     "test": "vitest run src",
     "test:rules": "firebase emulators:exec --only firestore --project demo-fixbench \"vitest run tests\"",
     "setup:shop": "node scripts/setup-shop.mjs",
-    "test:e2e": "node tests/e2e/phase2.mjs"
+    "test:e2e": "node tests/e2e/phase2.mjs && node tests/e2e/phase3.mjs"
   },
   "dependencies": {
     "@fontsource-variable/plus-jakarta-sans": "^5.1.0",

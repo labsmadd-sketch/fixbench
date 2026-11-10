@@ -7,11 +7,12 @@ import { Icon } from '../../components/Icon';
 import { StatusPill } from '../../components/StatusPill';
 import { dateTime, fromDateInput, shortDate, toDateInput } from '../../lib/dates';
 import { db } from '../../lib/firebase';
-import { formatLKR, parseToCents } from '../../lib/money';
+import { formatAmount, formatLKR, parseToCents } from '../../lib/money';
 import { whatsappLink } from '../../lib/phone';
 import { useDoc, useQuery } from '../../lib/useFirestore';
 import { useStaff } from '../../lib/useStaff';
-import type { Customer, HistoryEntry, Ticket, TicketNote, TicketStatus } from '../../types';
+import type { Customer, HistoryEntry, Invoice, Ticket, TicketNote, TicketStatus } from '../../types';
+import { InvoicePill } from '../invoices/InvoicePill';
 import { addNote, changeStatus, clearPin, deviceTicketsQuery, saveDiagnosis, statusUrl, updateTicket, type Me, type TicketRow } from './data';
 import { IntakeReceipt } from './IntakeReceipt';
 import { allowedTargets, isClosed, nextStep, STATUS, whatsappMessage } from './status';
@@ -101,10 +102,21 @@ function TicketDetail({ t }: { t: TicketRow }) {
                 Change status
               </button>
             )}
-            {next && (
-              <button className="btn btn--primary" onClick={() => move(next.to)}>
-                {next.label}
-              </button>
+            {desk && !isClosed(t.status) && t.status !== 'ready' && (
+              <Link className="btn" to={t.invoiceId ? `/invoices/${t.invoiceId}` : `/invoices/new?ticket=${t.id}`}>
+                <Icon name="receipt" size={16} /> {t.invoiceId ? t.invoiceNo : 'Invoice'}
+              </Link>
+            )}
+            {desk && t.status === 'ready' ? (
+              <Link className="btn btn--primary" to={t.invoiceId ? `/invoices/${t.invoiceId}` : `/invoices/new?ticket=${t.id}`}>
+                Take payment and hand over
+              </Link>
+            ) : (
+              next && (
+                <button className="btn btn--primary" onClick={() => move(next.to)}>
+                  {next.label}
+                </button>
+              )
             )}
           </div>
         </div>
@@ -179,10 +191,7 @@ function TicketDetail({ t }: { t: TicketRow }) {
               {notes.data.length === 0 && <p className="muted">No notes yet. Notes are for staff only and can’t be edited later.</p>}
             </section>
 
-            <section className="panel">
-              <h2>Parts and labour</h2>
-              <p className="muted">Quotes arrive in Phase 4 and invoices in Phase 3. Until then, the estimate is shown on the receipt.</p>
-            </section>
+            {desk && <InvoicePanel t={t} />}
           </div>
 
           <aside className="detail__side">
@@ -475,5 +484,57 @@ function EditJobDialog({ t, onClose }: { t: TicketRow; onClose: () => void }) {
         </div>
       </form>
     </dialog>
+  );
+}
+
+/** Counter only: technicians cannot read invoices (security rules). */
+function InvoicePanel({ t }: { t: TicketRow }) {
+  const inv = useDoc<Invoice>(t.invoiceId ? doc(db, 'invoices', t.invoiceId) : null, t.invoiceId ?? '');
+  if (!t.invoiceId) {
+    return (
+      <section className="panel">
+        <h2>Invoice</h2>
+        <p className="muted">
+          Not invoiced yet{t.estimate ? ` · estimate ${formatLKR(t.estimate)}` : ''}
+          {t.advance ? ` · advance ${formatLKR(t.advance)} taken` : ''}.
+        </p>
+        {!isClosed(t.status) && (
+          <Link className="btn btn--sm" style={{ alignSelf: 'flex-start' }} to={`/invoices/new?ticket=${t.id}`}>
+            Create invoice
+          </Link>
+        )}
+      </section>
+    );
+  }
+  const i = inv.data;
+  return (
+    <section className="panel">
+      <div className="panel__head">
+        <h2>Invoice</h2>
+        {i && <InvoicePill status={i.status} />}
+      </div>
+      {i ? (
+        <>
+          <Link to={`/invoices/${i.id}`} className="num" style={{ fontWeight: 700 }}>
+            {i.invoiceNo}
+          </Link>
+          {i.items.map((it, n) => (
+            <div className="paper__row" key={n}>
+              <span>{it.description}</span>
+              <span className="num">{formatAmount(Math.round(it.qty * it.unitPrice))}</span>
+            </div>
+          ))}
+          <div className="paper__row" style={{ fontWeight: 800, borderTop: '1px solid var(--line)', paddingTop: 8 }}>
+            <span>Total · paid {formatAmount(i.paid)}</span>
+            <span className="num">{formatLKR(i.total)}</span>
+          </div>
+          {i.balance > 0 && i.status !== 'void' && (
+            <span className="danger-text">Balance due {formatLKR(i.balance)}</span>
+          )}
+        </>
+      ) : (
+        <p className="muted">Loading…</p>
+      )}
+    </section>
   );
 }

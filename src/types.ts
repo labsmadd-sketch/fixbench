@@ -141,6 +141,8 @@ export interface Ticket {
   estimate?: Cents | null;
   advance?: Cents | null;
   dueDate?: Timestamp | null;
+  invoiceId?: string | null;
+  invoiceNo?: string | null;
   /** Device password given at intake (stored in /devices/{id}/secret/pin). */
   hasPin?: boolean;
   publicToken: string;
@@ -185,23 +187,60 @@ export interface InvoiceItem {
   unitPrice: Cents;
 }
 
-/** /invoices/{id} */
+export type InvoiceStatus = 'unpaid' | 'partial' | 'paid' | 'void';
+export type PaymentMethod = 'cash' | 'card' | 'bank' | 'lankaqr';
+
+export const PAYMENT_METHOD_LABEL: Record<PaymentMethod, string> = {
+  cash: 'Cash',
+  card: 'Card',
+  bank: 'Bank transfer',
+  lankaqr: 'LANKAQR',
+};
+
+/** /invoices/{id} — customer details are copied in, so old invoices never change. */
 export interface Invoice {
   invoiceNo: string;
   type: 'repair' | 'sale';
-  ticketId?: string;
+  ticketId?: string | null;
+  ticketNo?: string | null;
+  deviceLabel?: string | null;
   customerId: string;
   customerName: string;
+  customerPhone: string;
+  customerEmail?: string;
   customerTin?: string;
   items: InvoiceItem[];
   subtotal: Cents;
   discount: Cents;
+  sscl: Cents;
+  vat: Cents;
+  /** sscl + vat */
   tax: Cents;
+  /** Tax settings when issued (printed as a "Tax Invoice" when vatRegistered). */
+  vatRegistered: boolean;
+  taxRates?: { vat: number; sscl: number } | null;
   total: Cents;
   paid: Cents;
   balance: Cents;
-  status: 'unpaid' | 'partial' | 'paid' | 'void';
+  status: InvoiceStatus;
+  lastPaymentId?: string;
   voidReason?: string;
+  voidedAt?: Timestamp;
+  voidedBy?: string;
+  issuedBy: string;
+  issuedByName: string;
   issuedAt: Timestamp;
   updatedAt: Timestamp;
+}
+
+/** /invoices/{id}/payments/{id} — create-only. */
+export interface Payment {
+  amount: Cents;
+  method: PaymentMethod;
+  reference?: string;
+  /** "advance" for money taken at intake. */
+  note?: string;
+  byUid: string;
+  byName: string;
+  at: Timestamp;
 }

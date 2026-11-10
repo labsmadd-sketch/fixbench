@@ -127,17 +127,60 @@ service cloud.firestore {
     }
 
     // ---------- stock ----------
+    // Stock always matches its history: qty only changes together with a
+    // movement written in the same batch (named by lastMovementId), by exactly
+    // that movement's delta, and never below zero. `low` mirrors qty <= lowStockAt.
     match /inventory/{id} {
+      function next() { return request.resource.data; }
+      function movementAfter(mid) {
+        return getAfter(/databases/$(database)/documents/inventory/$(id)/movements/$(mid)).data;
+      }
+      function itemOk(d) {
+        return d.qty is int && d.qty >= 0 && d.lowStockAt is int && d.lowStockAt >= 0
+          && d.cost is int && d.cost >= 0 && d.price is int && d.price >= 0
+          && d.low == (d.qty <= d.lowStockAt);
+      }
+      function sameStock() {
+        return next().qty == resource.data.qty
+          && next().get('lastMovementId', '') == resource.data.get('lastMovementId', '');
+      }
+      function stockMoved() {
+        return next().lastMovementId != resource.data.get('lastMovementId', '')
+          && next().qty == resource.data.qty + movementAfter(next().lastMovementId).delta;
+      }
+
       allow read: if isStaff();
-      allow create, delete: if isManager();
-      // Front desk may only change stock levels (deducted when invoicing).
-      allow update: if isManager() || (isDesk() && onlyChanges(['qty', 'updatedAt']));
+      // Opening stock arrives as the first movement (or the item starts at zero).
+      allow create: if isManager() && itemOk(next())
+        && (next().qty == 0 || movementAfter(next().lastMovementId).delta == next().qty);
+      allow update: if itemOk(next()) && (
+           // Managers edit details freely; stock changes need a movement.
+           (isManager() && (sameStock() || stockMoved()))
+           // Front desk only sells: stock goes down through an invoice.
+        || (isDesk() && onlyChanges(['qty', 'low', 'lastMovementId', 'updatedAt']) && stockMoved()
+              && movementAfter(next().lastMovementId).reason == 'sold'
+              && movementAfter(next().lastMovementId).delta < 0)
+      );
+      // Deactivate instead of deleting, so the history stays.
+      allow delete: if false;
+
+      match /movements/{movement} {
+        allow read: if isStaff();
+        allow create: if isDesk() && byMe() && request.resource.data.delta is int
+          && getAfter(/databases/$(database)/documents/inventory/$(id)).data.lastMovementId == movement
+          && (isManager() || request.resource.data.reason == 'sold');
+        allow update, delete: if false;
+      }
     }
 
     // ---------- quotes ----------
+    // Any staff member can write a quote (technicians send them from their jobs).
     match /quotes/{id} {
       allow read: if isStaff();
-      allow create, update: if isStaff();
+      allow create: if isStaff() && request.resource.data.createdBy == request.auth.uid;
+      allow update: if isStaff()
+        && request.resource.data.quoteNo == resource.data.quoteNo
+        && request.resource.data.ticketId == resource.data.ticketId;
       allow delete: if isOwner();
     }
 

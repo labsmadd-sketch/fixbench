@@ -7,13 +7,11 @@ import { DashboardPage } from '../features/dashboard/DashboardPage';
 import { InvoiceDetailPage } from '../features/invoices/InvoiceDetailPage';
 import { InvoicesPage } from '../features/invoices/InvoicesPage';
 import { NewInvoicePage } from '../features/invoices/NewInvoicePage';
-import {
-  InventoryPage,
-  NotFoundPage,
-  QuotesPage,
-  ReportsPage,
-  SettingsPage,
-} from '../features/pages';
+import { InventoryPage } from '../features/inventory/InventoryPage';
+import { NotFoundPage, ReportsPage, SettingsPage } from '../features/pages';
+import { QuoteDetailPage } from '../features/quotes/QuoteDetailPage';
+import { QuoteEditorPage } from '../features/quotes/QuoteEditorPage';
+import { QuotesPage } from '../features/quotes/QuotesPage';
 import { SetupPage } from '../features/setup/SetupPage';
 import { PublicStatusPage } from '../features/status/PublicStatusPage';
 import { NewTicketPage } from '../features/tickets/NewTicketPage';
@@ -59,6 +57,9 @@ export function App() {
               <Route path=":id" element={<CustomerProfile />} />
             </Route>
             <Route path="quotes" element={<QuotesPage />} />
+            <Route path="quotes/new" element={<QuoteEditorPage />} />
+            <Route path="quotes/:id" element={<QuoteDetailPage />} />
+            <Route path="quotes/:id/edit" element={<QuoteEditorPage />} />
             <Route path="invoices" element={<RequireRole roles={[...DESK]}><InvoicesPage /></RequireRole>} />
             <Route path="invoices/new" element={<RequireRole roles={[...DESK]}><NewInvoicePage /></RequireRole>} />
             <Route path="invoices/:id" element={<RequireRole roles={[...DESK]}><InvoiceDetailPage /></RequireRole>} />

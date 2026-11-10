@@ -36,7 +36,9 @@ export function InvoicesPage() {
     <div>
       <div className="page-head">
         <h1 className="h1">Invoices and sales</h1>
-        <span className="muted" style={{ fontSize: 13 }}>Invoices are created from a job: open the ticket and choose “Invoice”.</span>
+        <Link to="/invoices/new?sale=1" className="btn btn--primary">
+          <Icon name="plus" /> Counter sale
+        </Link>
       </div>
 
       <div className="toolbar">
@@ -82,7 +84,7 @@ export function InvoicesPage() {
                   {i.customerName}
                   <span className="sub">{i.customerPhone}</span>
                 </td>
-                <td className="hide-sm">{i.ticketNo ?? <span className="muted">Sale</span>}</td>
+                <td className="hide-sm">{i.ticketNo ?? <span className="muted">Counter sale</span>}</td>
                 <td>
                   <InvoicePill status={i.status} />
                 </td>

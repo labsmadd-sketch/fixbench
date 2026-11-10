@@ -1,39 +1,35 @@
 import { doc } from 'firebase/firestore';
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useSession } from '../../app/session';
-import { ErrorAlert } from '../../components/Form';
+import { ErrorAlert, initials } from '../../components/Form';
 import { Icon } from '../../components/Icon';
 import { db } from '../../lib/firebase';
 import { computeTotals } from '../../lib/invoiceTotals';
 import { formatAmount, formatLKR, parseToCents } from '../../lib/money';
-import { useDoc } from '../../lib/useFirestore';
+import { useDebounced } from '../../lib/useDebounced';
+import { useDoc, useQuery } from '../../lib/useFirestore';
 import { useOnline } from '../../lib/useOnline';
-import { PAYMENT_METHOD_LABEL, type Customer, type InvoiceItem, type PaymentMethod, type Ticket } from '../../types';
-import type { CustomerRow } from '../customers/data';
+import { PAYMENT_METHOD_LABEL, type Customer, type PaymentMethod, type Quote, type Ticket } from '../../types';
+import { searchCustomers, type CustomerRow } from '../customers/data';
+import { approvedLines, ticketQuotesQuery } from '../quotes/data';
 import type { TicketRow } from '../tickets/data';
-import { issueInvoice } from './data';
+import { issueInvoice, StockError } from './data';
+import { checkLines, LineItems, linesFromItems, newLine, useStock } from './LineItems';
 
-interface Line {
-  key: number;
-  description: string;
-  kind: InvoiceItem['kind'];
-  qty: string;
-  price: string;
-}
-
-let nextKey = 1;
-const line = (l: Partial<Line> = {}): Line => ({ key: nextKey++, description: '', kind: 'labour', qty: '1', price: '', ...l });
-
-/** /invoices/new?ticket=… (or ?customer=… for an invoice without a job) */
+/**
+ * /invoices/new?ticket=…  invoice for a job (prefilled from an approved quote or the estimate)
+ * /invoices/new?sale=1    counter sale: walk-in or a chosen customer, no job
+ */
 export function NewInvoicePage() {
   const [params] = useSearchParams();
   const ticketId = params.get('ticket');
   const ticket = useDoc<Ticket>(ticketId ? doc(db, 'tickets', ticketId) : null, ticketId ?? '');
+  const quotes = useQuery<Quote>(ticketId ? ticketQuotesQuery(ticketId) : null, `quotes-of-${ticketId}`);
   const customerId = ticket.data?.customerId ?? params.get('customer');
   const customer = useDoc<Customer>(customerId ? doc(db, 'customers', customerId) : null, customerId ?? '');
 
-  if (ticket.loading || customer.loading) return <p className="muted">Loading…</p>;
+  if (ticket.loading || customer.loading || quotes.loading) return <p className="muted">Loading…</p>;
   if (ticket.data?.invoiceId) {
     return (
       <div className="panel">
@@ -42,18 +38,38 @@ export function NewInvoicePage() {
       </div>
     );
   }
-  if (!customer.data) return <div className="panel">Choose a customer or job to invoice.</div>;
-  return <InvoiceEditor key={ticketId ?? customerId} ticket={ticket.data} customer={customer.data} />;
+  if (ticketId && !ticket.data) return <div className="panel">This job no longer exists.</div>;
+  const approved = quotes.data.find((q) => q.status === 'approved');
+  return (
+    <InvoiceEditor
+      key={ticketId ?? customerId ?? 'sale'}
+      ticket={ticket.data}
+      initialCustomer={customer.data}
+      quote={approved ?? null}
+    />
+  );
 }
 
-function InvoiceEditor({ ticket, customer }: { ticket: TicketRow | null; customer: CustomerRow }) {
+function InvoiceEditor({
+  ticket,
+  initialCustomer,
+  quote,
+}: {
+  ticket: TicketRow | null;
+  initialCustomer: CustomerRow | null;
+  quote: (Quote & { id: string }) | null;
+}) {
   const { shop, profile, user } = useSession();
   const navigate = useNavigate();
   const online = useOnline();
-  const [lines, setLines] = useState<Line[]>(() =>
-    ticket
-      ? [line({ description: `Repair: ${ticket.deviceLabel} — ${ticket.problem}`.slice(0, 140), kind: 'labour', price: ticket.estimate ? String(ticket.estimate / 100) : '' })]
-      : [line()],
+  const stock = useStock();
+  const [customer, setCustomer] = useState<CustomerRow | null>(initialCustomer);
+  const [lines, setLines] = useState(() =>
+    quote
+      ? linesFromItems(approvedLines(quote))
+      : ticket
+        ? [newLine({ description: `Repair: ${ticket.deviceLabel} — ${ticket.problem}`.slice(0, 140), kind: 'labour', price: ticket.estimate ? String(ticket.estimate / 100) : '' })]
+        : [newLine({ kind: 'part' })],
   );
   const [discount, setDiscount] = useState('');
   const [advanceMethod, setAdvanceMethod] = useState<PaymentMethod>('cash');
@@ -61,19 +77,11 @@ function InvoiceEditor({ ticket, customer }: { ticket: TicketRow | null; custome
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const parsed = lines.map((l) => ({ l, qty: Number(l.qty), cents: parseToCents(l.price) }));
-  const lineErrors = parsed.map(({ l, qty, cents }) =>
-    !l.description.trim() ? 'Describe the item.' : !(qty > 0 && qty <= 1000) ? 'Check the quantity.' : cents === null || cents < 0 ? 'Enter a price.' : null,
-  );
+  const { items, invalid: linesInvalid } = checkLines(lines, stock.byId);
   const discountCents = discount.trim() ? parseToCents(discount) : 0;
-  const items: InvoiceItem[] = parsed
-    .filter((_, i) => !lineErrors[i])
-    .map(({ l, qty, cents }) => ({ description: l.description.trim(), kind: l.kind, qty, unitPrice: cents ?? 0 }));
   const totals = computeTotals(items, discountCents ?? 0, shop ?? { vatRegistered: false });
   const advance = ticket?.advance ?? 0;
-  const invalid = lineErrors.some(Boolean) || discountCents === null || lines.length === 0 || advance > totals.total;
-
-  const update = (key: number, patch: Partial<Line>) => setLines((ls) => ls.map((l) => (l.key === key ? { ...l, ...patch } : l)));
+  const invalid = linesInvalid || discountCents === null || advance > totals.total;
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -91,7 +99,11 @@ function InvoiceEditor({ ticket, customer }: { ticket: TicketRow | null; custome
       navigate(`/invoices/${res.id}`, { replace: true });
     } catch (err) {
       console.error(err);
-      setError(err instanceof Error && err.message.startsWith('The advance') ? err.message : 'Could not issue the invoice. Check your connection and try again; no number was used.');
+      setError(
+        err instanceof StockError || (err instanceof Error && err.message.startsWith('The advance'))
+          ? err.message
+          : 'Could not issue the invoice. Check your connection and try again; no number was used.',
+      );
       setBusy(false);
     }
   }
@@ -99,68 +111,32 @@ function InvoiceEditor({ ticket, customer }: { ticket: TicketRow | null; custome
   return (
     <form onSubmit={onSubmit} noValidate>
       <p className="crumbs">
-        <Link to="/invoices">Invoices and sales</Link> / New
+        <Link to="/invoices">Invoices and sales</Link> / {ticket ? 'New invoice' : 'Counter sale'}
       </p>
       <div className="page-head">
-        <h1 className="h1">New invoice</h1>
-        <span className="muted">
-          {customer.name}
-          {ticket ? ` · job ${ticket.ticketNo} · ${ticket.deviceLabel}` : ''}
-        </span>
+        <h1 className="h1">{ticket ? 'New invoice' : 'Counter sale'}</h1>
+        {ticket && (
+          <span className="muted">
+            {ticket.customerName} · job {ticket.ticketNo} · {ticket.deviceLabel}
+          </span>
+        )}
       </div>
 
       <div className="detail">
         <div className="detail__main">
+          {quote && (
+            <div className="alert alert--ok">
+              Filled in from quote <Link to={`/quotes/${quote.id}`}>{quote.quoteNo}</Link>, approved
+              {quote.withOptional ? ' with the optional items' : ''}. Change anything that differs.
+            </div>
+          )}
           <section className="panel">
             <div className="panel__head">
               <h2>Items</h2>
               <span className="muted" style={{ fontSize: 12 }}>Amounts in LKR</span>
             </div>
-            <div className="lines">
-              {lines.map((l, i) => (
-                <div className="line" key={l.key}>
-                  <div className="field line__desc">
-                    <label htmlFor={`d-${l.key}`} className={i ? 'sr-only' : undefined}>Description</label>
-                    <input id={`d-${l.key}`} value={l.description} onChange={(e) => update(l.key, { description: e.target.value })} aria-invalid={touched && !!lineErrors[i]} placeholder="DC power jack with cable" />
-                  </div>
-                  <div className="field">
-                    <label htmlFor={`k-${l.key}`} className={i ? 'sr-only' : undefined}>Type</label>
-                    <select id={`k-${l.key}`} value={l.kind} onChange={(e) => update(l.key, { kind: e.target.value as InvoiceItem['kind'] })}>
-                      <option value="part">Part</option>
-                      <option value="labour">Labour</option>
-                      <option value="other">Other</option>
-                    </select>
-                  </div>
-                  <div className="field line__qty">
-                    <label htmlFor={`q-${l.key}`} className={i ? 'sr-only' : undefined}>Qty</label>
-                    <input id={`q-${l.key}`} inputMode="decimal" className="num" value={l.qty} onChange={(e) => update(l.key, { qty: e.target.value })} />
-                  </div>
-                  <div className="field">
-                    <label htmlFor={`p-${l.key}`} className={i ? 'sr-only' : undefined}>Unit price</label>
-                    <input id={`p-${l.key}`} inputMode="decimal" className="num" value={l.price} onChange={(e) => update(l.key, { price: e.target.value })} aria-invalid={touched && parsed[i].cents === null} />
-                  </div>
-                  <span className="line__amount num">
-                    {parsed[i].cents !== null && parsed[i].qty > 0 ? formatAmount(Math.round(parsed[i].cents! * parsed[i].qty)) : '—'}
-                  </span>
-                  <button type="button" className="btn btn--ghost btn--sm" aria-label={`Remove line ${i + 1}`} onClick={() => setLines((ls) => ls.filter((x) => x.key !== l.key))} disabled={lines.length === 1}>
-                    ✕
-                  </button>
-                  {touched && lineErrors[i] && <span className="field__error line__error">{lineErrors[i]}</span>}
-                </div>
-              ))}
-            </div>
-            <div className="toggles">
-              <button type="button" className="toggle toggle--add" onClick={() => setLines((ls) => [...ls, line({ kind: 'part' })])}>
-                + Part
-              </button>
-              <button type="button" className="toggle toggle--add" onClick={() => setLines((ls) => [...ls, line({ kind: 'labour' })])}>
-                + Labour
-              </button>
-              <button type="button" className="toggle toggle--add" onClick={() => setLines((ls) => [...ls, line({ kind: 'other' })])}>
-                + Other
-              </button>
-            </div>
-            <p className="muted" style={{ fontSize: 12 }}>Picking parts from stock (and deducting them) arrives with inventory in Phase 4.</p>
+            <LineItems lines={lines} setLines={setLines} touched={touched} stock={stock} />
+            <p className="muted" style={{ fontSize: 12 }}>Parts from stock are deducted when the invoice is issued, and returned if it is voided.</p>
           </section>
 
           {advance > 0 && (
@@ -183,11 +159,20 @@ function InvoiceEditor({ ticket, customer }: { ticket: TicketRow | null; custome
         <aside className="detail__side">
           <section className="panel">
             <h2>Bill to</h2>
-            <div className="kv">
-              <strong>{customer.type === 'business' && customer.companyName ? customer.companyName : customer.name}</strong>
-              <span>{[customer.phone, customer.email].filter(Boolean).join(' · ')}</span>
-              {customer.tin && shop?.vatRegistered && <span>TIN {customer.tin}</span>}
-            </div>
+            {customer ? (
+              <div className="kv">
+                <strong>{customer.type === 'business' && customer.companyName ? customer.companyName : customer.name}</strong>
+                <span>{[customer.phone, customer.email].filter(Boolean).join(' · ')}</span>
+                {customer.tin && shop?.vatRegistered && <span>TIN {customer.tin}</span>}
+                {!ticket && (
+                  <button type="button" className="link-button" style={{ alignSelf: 'flex-start' }} onClick={() => setCustomer(null)}>
+                    Change to walk-in
+                  </button>
+                )}
+              </div>
+            ) : (
+              <CustomerPicker onPick={setCustomer} />
+            )}
             <span className="tag" style={{ alignSelf: 'flex-start' }}>
               {shop?.vatRegistered ? 'Prints as “Tax Invoice”' : 'Not VAT registered · prints as “Invoice”'}
             </span>
@@ -242,5 +227,37 @@ function InvoiceEditor({ ticket, customer }: { ticket: TicketRow | null; custome
         </aside>
       </div>
     </form>
+  );
+}
+
+/** Counter sales: walk-in by default, or look up a customer for their history and TIN. */
+function CustomerPicker({ onPick }: { onPick: (c: CustomerRow) => void }) {
+  const [text, setText] = useState('');
+  const q = useDebounced(text, 250);
+  const [results, setResults] = useState<CustomerRow[]>([]);
+  useEffect(() => {
+    let live = true;
+    searchCustomers(q).then((r) => live && setResults(r), () => live && setResults([]));
+    return () => {
+      live = false;
+    };
+  }, [q]);
+  return (
+    <div className="stack" style={{ gap: 8 }}>
+      <div className="kv">
+        <strong>Walk-in customer</strong>
+        <span>Or find a customer to keep it in their history:</span>
+      </div>
+      <input className="select" type="search" placeholder="Phone or name" aria-label="Find a customer" value={text} onChange={(e) => setText(e.target.value)} />
+      {results.slice(0, 5).map((c) => (
+        <button type="button" key={c.id} className="picker__item" onClick={() => onPick(c)}>
+          <span style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <span className="avatar" style={{ width: 26, height: 26, fontSize: 11 }}>{initials(c.name)}</span>
+            <strong>{c.name}</strong>
+          </span>
+          <span className="muted">{c.phone}</span>
+        </button>
+      ))}
+    </div>
   );
 }

@@ -200,6 +200,7 @@ export const PAYMENT_METHOD_LABEL: Record<PaymentMethod, string> = {
 /** /invoices/{id} — customer details are copied in, so old invoices never change. */
 export interface Invoice {
   invoiceNo: string;
+  /** 'sale' = counter sale with no job. customerId is '' for a walk-in customer. */
   type: 'repair' | 'sale';
   ticketId?: string | null;
   ticketNo?: string | null;
@@ -244,3 +245,78 @@ export interface Payment {
   byName: string;
   at: Timestamp;
 }
+
+export const STOCK_CATEGORIES = ['Laptop parts', 'Desktop parts', 'Storage', 'Accessories', 'Printer supplies', 'Consumables', 'Other'] as const;
+
+/** /inventory/{id} */
+export interface InventoryItem {
+  sku: string;
+  name: string;
+  category: string;
+  cost: Cents;
+  price: Cents;
+  qty: number;
+  /** Reorder when qty is at or below this. */
+  lowStockAt: number;
+  /** qty <= lowStockAt, stored so "low stock" is one query (rules check it). */
+  low: boolean;
+  active: boolean;
+  searchTokens: string[];
+  lastMovementId?: string;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+
+export type MovementReason = 'received' | 'damaged' | 'count' | 'sold' | 'returned';
+
+/** /inventory/{id}/movements/{id} — create-only stock history. */
+export interface StockMovement {
+  delta: number;
+  qtyAfter: number;
+  reason: MovementReason;
+  invoiceId?: string;
+  invoiceNo?: string;
+  note?: string;
+  byUid: string;
+  byName: string;
+  at: Timestamp;
+}
+
+export interface QuoteItem extends InvoiceItem {
+  /** Optional items the customer may tick ("Internal clean"). */
+  optional: boolean;
+  note?: string;
+}
+
+export type QuoteStatus = 'draft' | 'sent' | 'approved' | 'declined';
+export type ApprovedVia = 'whatsapp' | 'call' | 'in_person';
+
+/** /quotes/{id} */
+export interface Quote {
+  quoteNo: string;
+  ticketId: string;
+  ticketNo: string;
+  customerId: string;
+  customerName: string;
+  customerPhone: string;
+  deviceLabel: string;
+  diagnosis: string;
+  items: QuoteItem[];
+  /** Recommended items only, before tax. */
+  recommendedTotal: Cents;
+  optionalTotal: Cents;
+  validUntil: Timestamp;
+  status: QuoteStatus;
+  /** When approved: did the customer also take the optional items? */
+  withOptional?: boolean;
+  approvedVia?: ApprovedVia;
+  sentAt?: Timestamp;
+  decidedAt?: Timestamp;
+  decidedBy?: string;
+  invoiceId?: string;
+  createdBy: string;
+  createdByName: string;
+  createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+

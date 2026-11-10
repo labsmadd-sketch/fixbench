@@ -8,7 +8,6 @@ import {
   runTransaction,
   serverTimestamp,
   Timestamp,
-  updateDoc,
   where,
 } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
@@ -16,7 +15,8 @@ import { computeTotals, paymentStatus } from '../../lib/invoiceTotals';
 import type { Cents } from '../../lib/money';
 import { issueNumbered } from '../../lib/numbering';
 import type { WithId } from '../../lib/useFirestore';
-import type { Invoice, InvoiceItem, InvoiceStatus, Payment, PaymentMethod, ShopSettings } from '../../types';
+import { isLow, stockNeeds } from '../../lib/stock';
+import type { InventoryItem, Invoice, InvoiceItem, InvoiceStatus, Payment, PaymentMethod, ShopSettings } from '../../types';
 import type { CustomerRow } from '../customers/data';
 import type { Me, TicketRow } from '../tickets/data';
 
@@ -42,8 +42,12 @@ export function paymentsSinceQuery(since: Date) {
   return query(collectionGroup(db, 'payments'), where('at', '>=', Timestamp.fromDate(since)), orderBy('at', 'desc'), limit(500));
 }
 
+/** Thrown when a stock line asks for more than is on the shelf; the message is shown as-is. */
+export class StockError extends Error {}
+
 export interface NewInvoiceInput {
-  customer: CustomerRow;
+  /** null = walk-in customer (counter sale). */
+  customer: CustomerRow | null;
   ticket: TicketRow | null;
   items: InvoiceItem[];
   discount: Cents;
@@ -53,7 +57,8 @@ export interface NewInvoiceInput {
 
 /**
  * Issue an invoice in ONE transaction: next number, the invoice, the advance
- * as its first payment, and the link from the ticket. Needs a connection.
+ * as its first payment, stock deducted for parts taken from inventory (with a
+ * movement each), and the link from the ticket. All or nothing; needs a connection.
  */
 export async function issueInvoice(
   input: NewInvoiceInput,
@@ -67,20 +72,34 @@ export async function issueInvoice(
   const paid = advance?.amount ?? 0;
   const paymentRef = advance ? doc(collection(ref, 'payments')) : null;
 
-  const invoiceNo = await issueNumbered('invoice', shop.prefixes.invoice, shop.numberRestart, (tx, number) => {
+  const need = stockNeeds(input.items);
+
+  const invoiceNo = await issueNumbered<Map<string, InventoryItem>>(
+    'invoice',
+    shop.prefixes.invoice,
+    shop.numberRestart,
+    (tx, number, stock) => {
     const t = input.ticket;
     const c = input.customer;
+    for (const [itemId, n] of need) {
+      const item = stock.get(itemId)!;
+      const qty = item.qty - n;
+      const itemRef = doc(db, 'inventory', itemId);
+      const mref = doc(collection(itemRef, 'movements'));
+      tx.set(mref, { delta: -n, qtyAfter: qty, reason: 'sold', invoiceId: ref.id, invoiceNo: number, note: '', byUid: me.uid, byName: me.name, at: serverTimestamp() });
+      tx.update(itemRef, { qty, low: isLow(qty, item.lowStockAt), lastMovementId: mref.id, updatedAt: serverTimestamp() });
+    }
     tx.set(ref, {
       invoiceNo: number,
       type: t ? 'repair' : 'sale',
       ticketId: t?.id ?? null,
       ticketNo: t?.ticketNo ?? null,
       deviceLabel: t ? `${t.deviceLabel}${t.deviceSerial ? ` S/N ${t.deviceSerial}` : ''}` : null,
-      customerId: c.id,
-      customerName: c.type === 'business' && c.companyName ? `${c.companyName} (${c.name})` : c.name,
-      customerPhone: c.phone,
-      customerEmail: c.email ?? '',
-      customerTin: c.tin ?? '',
+      customerId: c?.id ?? '',
+      customerName: !c ? 'Walk-in customer' : c.type === 'business' && c.companyName ? `${c.companyName} (${c.name})` : c.name,
+      customerPhone: c?.phone ?? '',
+      customerEmail: c?.email ?? '',
+      customerTin: c?.tin ?? '',
       items: input.items,
       ...totals,
       tax: totals.sscl + totals.vat,
@@ -107,7 +126,22 @@ export async function issueInvoice(
       });
     }
     if (t) tx.update(doc(db, 'tickets', t.id), { invoiceId: ref.id, invoiceNo: number, updatedAt: serverTimestamp() });
-  });
+    },
+    {
+      // Read stock levels before writing anything; stop if a part has run out.
+      read: async (tx) => {
+        const stock = new Map<string, InventoryItem>();
+        for (const [itemId, n] of need) {
+          const snap = await tx.get(doc(db, 'inventory', itemId));
+          if (!snap.exists()) throw new StockError('A part on this invoice is no longer in inventory.');
+          const item = snap.data() as InventoryItem;
+          if (item.qty < n) throw new StockError(`Only ${item.qty} × ${item.name} in stock. Receive more stock or change the quantity.`);
+          stock.set(itemId, item);
+        }
+        return stock;
+      },
+    },
+  );
 
   return { id: ref.id, invoiceNo };
 }
@@ -150,14 +184,29 @@ export async function recordPayment(
   });
 }
 
-/** Owner only (rules enforce it). The number stays used; nothing is deleted. */
-export function voidInvoice(invoiceId: string, reason: string, me: Me): Promise<void> {
-  return updateDoc(doc(db, 'invoices', invoiceId), {
-    status: 'void',
-    voidReason: reason.trim(),
-    voidedAt: serverTimestamp(),
-    voidedBy: me.name,
-    updatedAt: serverTimestamp(),
+/**
+ * Owner only (rules enforce it). The number stays used; nothing is deleted.
+ * Parts taken from stock go back on the shelf, each with a "returned" movement.
+ */
+export async function voidInvoice(invoiceId: string, reason: string, me: Me): Promise<void> {
+  const ref = doc(db, 'invoices', invoiceId);
+  await runTransaction(db, async (tx) => {
+    const inv = (await tx.get(ref)).data() as Invoice;
+    const need = stockNeeds(inv.items);
+    const items = new Map<string, InventoryItem>();
+    for (const id of need.keys()) {
+      const snap = await tx.get(doc(db, 'inventory', id));
+      if (snap.exists()) items.set(id, snap.data() as InventoryItem);
+    }
+    tx.update(ref, { status: 'void', voidReason: reason.trim(), voidedAt: serverTimestamp(), voidedBy: me.name, updatedAt: serverTimestamp() });
+    for (const [id, item] of items) {
+      const n = need.get(id)!;
+      const qty = item.qty + n;
+      const itemRef = doc(db, 'inventory', id);
+      const mref = doc(collection(itemRef, 'movements'));
+      tx.set(mref, { delta: n, qtyAfter: qty, reason: 'returned', invoiceId, invoiceNo: inv.invoiceNo, note: reason.trim(), byUid: me.uid, byName: me.name, at: serverTimestamp() });
+      tx.update(itemRef, { qty, low: isLow(qty, item.lowStockAt), lastMovementId: mref.id, updatedAt: serverTimestamp() });
+    }
   });
 }
 

@@ -1,7 +1,10 @@
 import { getDocs } from 'firebase/firestore';
 import { useState, type FormEvent } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { lowStockQuery } from '../features/inventory/data';
 import { ticketByNumberQuery } from '../features/tickets/data';
+import { useQuery } from '../lib/useFirestore';
+import type { InventoryItem } from '../types';
 import { looksLikeTicketNo } from '../lib/search';
 import { useOnline } from '../lib/useOnline';
 import { ROLE_LABEL, type Role } from '../types';
@@ -42,6 +45,7 @@ export function Layout() {
   const shopName = shop?.name ?? 'Your shop';
   const navigate = useNavigate();
   const [search, setSearch] = useState('');
+  const low = useQuery<InventoryItem>(lowStockQuery(), 'low-stock');
 
   // A ticket number opens that ticket; anything else searches customers.
   async function onSearch(e: FormEvent) {
@@ -74,6 +78,7 @@ export function Layout() {
           <NavLink key={n.to} to={n.to} end={n.to === '/'} className="sidebar__link">
             <Icon name={n.icon} />
             {n.label}
+            {n.to === '/inventory' && low.data.length > 0 && <span className="sidebar__badge">{low.data.length} low</span>}
           </NavLink>
         ))}
         <div className="sidebar__spacer" />

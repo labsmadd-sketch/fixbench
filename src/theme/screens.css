@@ -169,6 +169,12 @@
 .line .num { text-align: right; }
 .line__amount { text-align: right; padding-bottom: 12px; font-weight: 600; }
 .line__error { grid-column: 1 / -1; }
+.line__meta { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 12px; color: var(--muted); margin-top: -4px; }
+.picker { border: 1px solid var(--line-strong); border-radius: var(--radius); padding: 10px; display: flex; flex-direction: column; gap: 6px; background: var(--ground); }
+.picker__item { all: unset; box-sizing: border-box; display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 10px 12px; border-radius: 8px; background: var(--surface); border: 1px solid var(--line); cursor: pointer; font-size: 13px; }
+.picker__item:hover:not(:disabled) { border-color: var(--brand); }
+.picker__item:disabled { opacity: 0.55; cursor: not-allowed; }
+.picker__item:focus-visible { outline: 3px solid var(--brand); outline-offset: 2px; }
 .totals { display: flex; flex-direction: column; gap: 8px; }
 .totals .paper__row { font-size: 14px; }
 .totals__grand { font-weight: 800; font-size: 16px !important; border-top: 1px solid var(--line); padding-top: 8px; }

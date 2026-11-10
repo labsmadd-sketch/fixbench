@@ -11,7 +11,8 @@ import { formatAmount, formatLKR, parseToCents } from '../../lib/money';
 import { whatsappLink } from '../../lib/phone';
 import { useDoc, useQuery } from '../../lib/useFirestore';
 import { useStaff } from '../../lib/useStaff';
-import type { Customer, HistoryEntry, Invoice, Ticket, TicketNote, TicketStatus } from '../../types';
+import type { Customer, HistoryEntry, Invoice, Quote, Ticket, TicketNote, TicketStatus } from '../../types';
+import { QUOTE_STATUS, ticketQuotesQuery } from '../quotes/data';
 import { InvoicePill } from '../invoices/InvoicePill';
 import { addNote, changeStatus, clearPin, deviceTicketsQuery, saveDiagnosis, statusUrl, updateTicket, type Me, type TicketRow } from './data';
 import { IntakeReceipt } from './IntakeReceipt';
@@ -112,11 +113,16 @@ function TicketDetail({ t }: { t: TicketRow }) {
                 Take payment and hand over
               </Link>
             ) : (
-              next && (
+              next &&
+              (next.to === 'awaiting_approval' ? (
+                <Link className="btn btn--primary" to={`/quotes/new?ticket=${t.id}`}>
+                  Write a quote
+                </Link>
+              ) : (
                 <button className="btn btn--primary" onClick={() => move(next.to)}>
                   {next.label}
                 </button>
-              )
+              ))
             )}
           </div>
         </div>
@@ -191,6 +197,7 @@ function TicketDetail({ t }: { t: TicketRow }) {
               {notes.data.length === 0 && <p className="muted">No notes yet. Notes are for staff only and can’t be edited later.</p>}
             </section>
 
+            <QuotesPanel t={t} canWrite={canWork && !isClosed(t.status)} />
             {desk && <InvoicePanel t={t} />}
           </div>
 
@@ -484,6 +491,36 @@ function EditJobDialog({ t, onClose }: { t: TicketRow; onClose: () => void }) {
         </div>
       </form>
     </dialog>
+  );
+}
+
+function QuotesPanel({ t, canWrite }: { t: TicketRow; canWrite: boolean }) {
+  const quotes = useQuery<Quote>(ticketQuotesQuery(t.id), `quotes-of-${t.id}`);
+  if (!quotes.data.length && !canWrite) return null;
+  return (
+    <section className="panel">
+      <div className="panel__head">
+        <h2>Quotes</h2>
+        {canWrite && (
+          <Link className="btn btn--sm" to={`/quotes/new?ticket=${t.id}`}>
+            <Icon name="plus" size={14} /> Quote
+          </Link>
+        )}
+      </div>
+      {quotes.data.length === 0 && <p className="muted">No quote yet. Write one when the customer needs to approve parts or cost.</p>}
+      {quotes.data.map((q) => (
+        <Link key={q.id} to={`/quotes/${q.id}`} className="paper__row" style={{ textDecoration: 'none', color: 'inherit', alignItems: 'center' }}>
+          <span className="kv">
+            <strong className="num" style={{ color: 'var(--brand-text)', fontSize: 14 }}>{q.quoteNo}</strong>
+            <span>
+              {QUOTE_STATUS[q.status].label} · {formatLKR(q.recommendedTotal)}
+              {q.optionalTotal > 0 ? ` (+${formatAmount(q.optionalTotal)} optional)` : ''}
+            </span>
+          </span>
+          <Icon name="arrowRight" size={16} />
+        </Link>
+      ))}
+    </section>
   );
 }
 

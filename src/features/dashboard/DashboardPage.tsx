@@ -5,7 +5,8 @@ import { StatusPill } from '../../components/StatusPill';
 import { daysFromToday, shortDate } from '../../lib/dates';
 import { formatLKR } from '../../lib/money';
 import { useQuery } from '../../lib/useFirestore';
-import { PAYMENT_METHOD_LABEL, type Invoice, type Payment, type PaymentMethod, type Ticket } from '../../types';
+import { PAYMENT_METHOD_LABEL, type InventoryItem, type Invoice, type Payment, type PaymentMethod, type Ticket } from '../../types';
+import { lowStockQuery } from '../inventory/data';
 import { invoicesQuery, paymentsSinceQuery } from '../invoices/data';
 import { openTicketsQuery, type TicketRow } from '../tickets/data';
 import { isOverdue } from '../tickets/TicketsPage';
@@ -33,6 +34,7 @@ export function DashboardPage() {
   midnight.setHours(0, 0, 0, 0);
   const unpaid = useQuery<Invoice>(isTech ? null : invoicesQuery('open', 500), 'dash-unpaid');
   const today = useQuery<Payment>(isTech ? null : paymentsSinceQuery(midnight), `dash-paid-${midnight.getTime()}`);
+  const low = useQuery<InventoryItem>(lowStockQuery(), 'low-stock');
   const unpaidTotal = unpaid.data.reduce((s, i) => s + i.balance, 0);
   const takenTotal = today.data.reduce((s, p) => s + p.amount, 0);
   const byMethod = (Object.keys(PAYMENT_METHOD_LABEL) as PaymentMethod[])
@@ -51,9 +53,12 @@ export function DashboardPage() {
   const list = (title: string, rows: TicketRow[], empty: string) => (
     <section className="panel">
       <h2>
-        {title} · {rows.length}
+        {title}
+        {open.loading ? '' : ` · ${rows.length}`}
       </h2>
-      {rows.length === 0 ? (
+      {open.loading ? (
+        <p className="muted">Loading…</p>
+      ) : rows.length === 0 ? (
         <p className="muted">{empty}</p>
       ) : (
         rows.slice(0, 8).map((t) => (
@@ -81,9 +86,14 @@ export function DashboardPage() {
           {profile ? `, ${profile.name.split(' ')[0]}` : ''}
         </h1>
         {!isTech && (
-          <Link to="/tickets/new" className="btn btn--primary">
-            <Icon name="plus" /> Book in a device
-          </Link>
+          <>
+            <Link to="/invoices/new?sale=1" className="btn">
+              Counter sale
+            </Link>
+            <Link to="/tickets/new" className="btn btn--primary">
+              <Icon name="plus" /> Book in a device
+            </Link>
+          </>
         )}
       </div>
       <div className="stats">
@@ -116,6 +126,25 @@ export function DashboardPage() {
         {list('Ready for pickup', ready, 'Nothing waiting to be collected.')}
         {list('Overdue', overdue, 'No overdue jobs.')}
         {list('Due today', dueToday, 'Nothing else due today.')}
+        {low.data.length > 0 && (
+          <section className="panel">
+            <div className="panel__head">
+              <h2>Low stock · {low.data.length}</h2>
+              <Link to="/inventory?f=low" style={{ fontSize: 13 }}>
+                Inventory
+              </Link>
+            </div>
+            {low.data.slice(0, 6).map((i) => (
+              <Link key={i.id} to={`/inventory?f=low&item=${i.id}`} className="paper__row" style={{ textDecoration: 'none', color: 'inherit' }}>
+                <span className="kv">
+                  <strong style={{ fontSize: 14 }}>{i.name}</strong>
+                  <span>Reorder at {i.lowStockAt}</span>
+                </span>
+                <strong className="danger-text num">{i.qty}</strong>
+              </Link>
+            ))}
+          </section>
+        )}
       </div>
     </div>
   );

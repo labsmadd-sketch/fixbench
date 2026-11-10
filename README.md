@@ -34,7 +34,7 @@ Sign in as `owner@demo.test`, `desk@demo.test` or `tech@demo.test` with `passwor
 | `npm run seed` | Staff, shop settings, demo customers, devices and tickets in the emulators |
 | `npm test` | Unit tests: theming contrast, phone numbers, money, search, dates, statuses |
 | `npm run test:rules` | Security rules tests against the Firestore emulator |
-| `npm run test:e2e` | Browser tests of customers, intake, tickets, invoices, payments and roles (needs `emulators` and `dev` running; resets emulator data) |
+| `npm run test:e2e` | Browser tests of customers, intake, tickets, invoices, payments, quotes, stock and roles (needs `emulators` and `dev` running; resets emulator data) |
 | `npm run typecheck` | TypeScript, no output |
 | `npm run build:shop shop-<alias>` | Production build using `.env.shop-<alias>` |
 | `npm run setup:shop -- --account <google> --alias <name> --project-id <id> --owner-email … --owner-name …` | Create and deploy a new shop with the given Google account (see `scripts/setup-shop.mjs`; no service-account key needed) |
@@ -60,6 +60,8 @@ scripts/        setup-shop.mjs, seed-emulator.mjs
 - **Every permission is enforced in `firestore.rules`.** Hiding a button is not security. Add a rules test for every rule change.
 - **Invoices are voided, never deleted.** Payments go through `recordPayment()`; the rules only
   accept a change to `paid` that matches a payment written in the same batch.
+- **Stock** only changes with a movement written in the same batch (rules check the quantity
+  matches); front desk stock changes come only from invoices. Never below zero.
 - **Tax** is calculated in one place, `lib/invoiceTotals.ts`. Have an accountant confirm the VAT and
   SSCL method before a VAT-registered shop goes live.
 - **Brand colours** go through `deriveTheme()`, which keeps every text/background pair at 4.5:1 or better.
@@ -77,7 +79,11 @@ Phase 3 (Invoices and payments): invoices from a job with parts/labour lines, di
 VAT/SSCL for registered shops; numbers issued in a transaction; intake advance as the first payment;
 part payments by cash, card, bank transfer or LANKAQR; owner-only void; A4 print / save as PDF;
 WhatsApp and email share; hand-over from the invoice; unpaid balance and today's takings on the dashboard.
-Quotes, inventory, reports and settings are placeholders that name their roadmap phase.
+Phase 4 (Quotes, inventory, counter sales): quotes from a job with recommended and optional
+items, sent on WhatsApp, customer's answer moves the job on, approved quote fills the invoice;
+inventory with stock value, low-stock badge and alerts, received/damaged/count adjustments and a
+movement history; stock deducted when invoicing and returned on void; walk-in counter sales.
+Reports and settings are placeholders that name their roadmap phase.
 
 ## Shops
 

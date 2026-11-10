@@ -10,6 +10,7 @@ import {
   updateDoc,
   where,
   writeBatch,
+  type WriteBatch,
 } from 'firebase/firestore';
 import { db } from '../../lib/firebase';
 import type { Cents } from '../../lib/money';
@@ -143,6 +144,12 @@ export async function createTicket(
  */
 export function changeStatus(t: TicketRow, to: TicketStatus, note: string, me: Me): Promise<void> {
   const batch = writeBatch(db);
+  addStatusChange(batch, t, to, note, me);
+  return batch.commit();
+}
+
+/** The writes for a status change, added to a batch that may hold other changes (e.g. a quote). */
+export function addStatusChange(batch: WriteBatch, t: TicketRow, to: TicketStatus, note: string, me: Me): void {
   const ref = doc(db, 'tickets', t.id);
   const clearPin = isClosed(to) && t.hasPin;
   batch.update(ref, { status: to, updatedAt: serverTimestamp(), ...(clearPin ? { hasPin: false } : {}) });
@@ -156,7 +163,6 @@ export function changeStatus(t: TicketRow, to: TicketStatus, note: string, me: M
   });
   batch.set(doc(db, 'publicStatus', t.publicToken), { status: to, updatedAt: serverTimestamp() }, { merge: true });
   if (clearPin) batch.delete(doc(db, 'devices', t.deviceId, 'secret', 'pin'));
-  return batch.commit();
 }
 
 export function addNote(ticketId: string, text: string, me: Me): Promise<void> {

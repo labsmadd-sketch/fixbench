@@ -56,7 +56,7 @@ function InvoiceDetail({ inv }: { inv: InvoiceRow }) {
             <h1>{inv.invoiceNo}</h1>
             <InvoicePill status={inv.status} large />
             <span className="muted">
-              {inv.type === 'repair' ? 'Repair' : 'Sale'}
+              {inv.type === 'repair' ? 'Repair' : 'Counter sale'}
               {inv.ticketNo && (
                 <>
                   {' · from '}
@@ -71,7 +71,7 @@ function InvoiceDetail({ inv }: { inv: InvoiceRow }) {
             <button className="btn" onClick={() => window.print()}>
               <Icon name="printer" size={16} /> Print or save PDF
             </button>
-            {!isVoid && (
+            {!isVoid && inv.customerPhone && (
               <a className="btn" href={whatsappLink(inv.customerPhone, message)} target="_blank" rel="noreferrer">
                 Send on WhatsApp
               </a>
@@ -101,9 +101,13 @@ function InvoiceDetail({ inv }: { inv: InvoiceRow }) {
               <section className="panel">
                 <span className="section-title">Bill to</span>
                 <div className="kv">
-                  <Link to={`/customers/${inv.customerId}`} style={{ fontWeight: 800, fontSize: 16 }}>
-                    {inv.customerName}
-                  </Link>
+                  {inv.customerId ? (
+                    <Link to={`/customers/${inv.customerId}`} style={{ fontWeight: 800, fontSize: 16 }}>
+                      {inv.customerName}
+                    </Link>
+                  ) : (
+                    <strong style={{ fontSize: 16 }}>{inv.customerName}</strong>
+                  )}
                   <span>{[inv.customerPhone, inv.customerEmail].filter(Boolean).join(' · ')}</span>
                   {inv.vatRegistered && inv.customerTin && <span>TIN {inv.customerTin}</span>}
                 </div>
@@ -325,7 +329,7 @@ function VoidDialog({ onClose, onVoid }: { onClose: () => void; onVoid: (reason:
         }}
       >
         <h2>Void this invoice?</h2>
-        <p className="muted">The invoice stays on record with its number, marked void. Payments already recorded are kept. This cannot be undone.</p>
+        <p className="muted">The invoice stays on record with its number, marked void. Payments already recorded are kept, and parts taken from stock go back on the shelf. This cannot be undone.</p>
         <Field id="void-reason" label="Reason" hint="Shown on the invoice, e.g. “Issued twice by mistake”.">
           <input id="void-reason" value={reason} onChange={(e) => setReason(e.target.value)} autoFocus />
         </Field>

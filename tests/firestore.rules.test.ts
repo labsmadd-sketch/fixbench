@@ -47,6 +47,9 @@ beforeEach(async () => {
     await setDoc(doc(db, 'invoices', 'i1'), { invoiceNo: 'INV-2026-0009', status: 'partial', total: 1850000, paid: 600000, balance: 1250000, lastPaymentId: 'p0' });
     await setDoc(doc(db, 'invoices', 'i1', 'payments', 'p0'), { amount: 600000, method: 'cash', byUid: 'desk' });
     await setDoc(doc(db, 'publicStatus', 'tok123'), { ticketNo: 'T-2026-0005', status: 'ready' });
+    await setDoc(doc(db, 'inventory', 'ssd'), { sku: 'SSD', name: 'SSD 512', cost: 980000, price: 1350000, qty: 4, lowStockAt: 3, low: false, lastMovementId: 'm0' });
+    await setDoc(doc(db, 'inventory', 'ssd', 'movements', 'm0'), { delta: 4, reason: 'received', byUid: 'manager' });
+    await setDoc(doc(db, 'quotes', 'q1'), { quoteNo: 'Q-2026-0002', ticketId: 't1', createdBy: 'tech', status: 'sent' });
   });
 });
 
@@ -210,6 +213,62 @@ describe('invoices', () => {
     await assertFails(getDoc(doc(as('tech'), 'invoices', 'i1')));
     await assertFails(getDocs(collectionGroup(as('tech'), 'payments')));
     await assertSucceeds(getDocs(collectionGroup(as('desk'), 'payments')));
+  });
+});
+
+describe('inventory', () => {
+  const move = (who: keyof typeof STAFF, mid: string, delta: number, reason: string, item: Record<string, unknown>) => {
+    const db = as(who);
+    const batch = writeBatch(db);
+    batch.set(doc(db, 'inventory', 'ssd', 'movements', mid), { delta, reason, byUid: who });
+    batch.update(doc(db, 'inventory', 'ssd'), { ...item, lastMovementId: mid });
+    return batch.commit();
+  };
+
+  it('front desk sells stock down, with a matching movement and low flag', async () => {
+    await assertSucceeds(move('desk', 'm1', -2, 'sold', { qty: 2, low: true }));
+    await assertFails(move('desk', 'm2', -1, 'sold', { qty: 1, low: false })); // wrong low flag
+    await assertFails(move('desk', 'm2', -1, 'sold', { qty: 0, low: true })); // qty does not match delta
+    await assertFails(move('desk', 'm2', -3, 'sold', { qty: -1, low: true })); // below zero
+  });
+
+  it('only managers receive, write off or count stock', async () => {
+    await assertFails(move('desk', 'm1', 5, 'received', { qty: 9, low: false }));
+    await assertFails(move('desk', 'm1', 1, 'sold', { qty: 5, low: false }));
+    await assertSucceeds(move('manager', 'm1', 5, 'received', { qty: 9, low: false }));
+    await assertFails(move('tech', 'm2', -1, 'sold', { qty: 8, low: false }));
+  });
+
+  it('stock never changes without a movement', async () => {
+    await assertFails(updateDoc(doc(as('manager'), 'inventory', 'ssd'), { qty: 10, low: false }));
+    await assertFails(updateDoc(doc(as('desk'), 'inventory', 'ssd'), { qty: 3, low: true }));
+    await assertFails(setDoc(doc(as('manager'), 'inventory', 'ssd', 'movements', 'lonely'), { delta: 1, reason: 'count', byUid: 'manager' }));
+    await assertSucceeds(updateDoc(doc(as('manager'), 'inventory', 'ssd'), { price: 1400000 }));
+    await assertFails(updateDoc(doc(as('desk'), 'inventory', 'ssd'), { price: 1 }));
+  });
+
+  it('new items bring their opening stock as a movement; items are never deleted', async () => {
+    const db = as('manager');
+    const ok = writeBatch(db);
+    ok.set(doc(db, 'inventory', 'ram'), { sku: 'RAM', name: 'RAM 8GB', cost: 620000, price: 890000, qty: 9, lowStockAt: 2, low: false, lastMovementId: 'o' });
+    ok.set(doc(db, 'inventory', 'ram', 'movements', 'o'), { delta: 9, reason: 'received', byUid: 'manager' });
+    await assertSucceeds(ok.commit());
+    await assertFails(setDoc(doc(db, 'inventory', 'kb'), { sku: 'KB', name: 'Keyboard', cost: 1, price: 2, qty: 5, lowStockAt: 1, low: false }));
+    await assertSucceeds(setDoc(doc(db, 'inventory', 'paste'), { sku: 'TP', name: 'Paste', cost: 1, price: 2, qty: 0, lowStockAt: 1, low: true }));
+    await assertFails(setDoc(doc(as('desk'), 'inventory', 'x'), { sku: 'X', name: 'X', cost: 1, price: 2, qty: 0, lowStockAt: 1, low: true }));
+    await assertFails(deleteDoc(doc(as('owner'), 'inventory', 'ssd')));
+    await assertSucceeds(getDoc(doc(as('tech'), 'inventory', 'ssd')));
+  });
+});
+
+describe('quotes', () => {
+  it('staff write quotes in their own name; the number and job never change', async () => {
+    await assertSucceeds(setDoc(doc(as('tech'), 'quotes', 'q2'), { quoteNo: 'Q-2026-0003', ticketId: 't1', createdBy: 'tech', status: 'draft' }));
+    await assertFails(setDoc(doc(as('tech'), 'quotes', 'q3'), { quoteNo: 'Q-2026-0004', ticketId: 't1', createdBy: 'desk', status: 'draft' }));
+    await assertSucceeds(updateDoc(doc(as('desk'), 'quotes', 'q1'), { status: 'approved' }));
+    await assertFails(updateDoc(doc(as('desk'), 'quotes', 'q1'), { quoteNo: 'Q-2026-0099' }));
+    await assertFails(updateDoc(doc(as('desk'), 'quotes', 'q1'), { ticketId: 't2' }));
+    await assertFails(deleteDoc(doc(as('manager'), 'quotes', 'q1')));
   });
 });
 

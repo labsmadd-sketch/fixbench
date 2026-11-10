@@ -107,6 +107,7 @@ a { color: var(--brand-text); }
 .sidebar__link:hover { background: var(--nav-active); color: #fff; }
 .sidebar__link.active { background: var(--nav-active); color: #fff; font-weight: 700; }
 .sidebar__spacer { flex: 1; min-height: 24px; }
+.sidebar__badge { margin-left: auto; padding: 2px 8px; border-radius: 999px; background: #fee2e2; color: #991b1b; font-size: 11px; font-weight: 700; }
 .sidebar__me { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 10px; background: var(--nav-active); }
 .sidebar__me-text { display: flex; flex-direction: column; flex: 1; min-width: 0; font-size: 12px; color: #94a3b8; }
 .sidebar__me-text strong { color: #fff; font-size: 13px; }

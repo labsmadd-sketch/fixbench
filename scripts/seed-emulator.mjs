@@ -205,9 +205,47 @@ await db.doc('tickets/t-demo-06/notes/n1').set({
   await db.doc(`invoices/${id}/payments/p1`).set({ amount: total, method: 'cash', reference: '', note: '', byUid: desk.uid, byName: desk.name, at: at(-37, 16) });
   await db.doc('tickets/t-demo-01').update({ invoiceId: id, invoiceNo: `INV-${year}-0001` });
 }
-await db.doc(`counters/${year}`).set({ ticket: TICKETS.length, quote: 0, invoice: 1 });
+// ---------- stock (from the design canvas; three are low) ----------
+const manager = staffByEmail['manager@demo.test'];
+const STOCK = [
+  ['ssd-512', 'SSD-512-NV', 'SSD 512 GB NVMe', 'Storage', 9800, 13500, 1, 3],
+  ['chg-65', 'CHG-65-UNI', 'Laptop charger 65W universal', 'Accessories', 3200, 5500, 2, 4],
+  ['paste-4g', 'TP-4G', 'Thermal paste 4g', 'Consumables', 450, 1000, 3, 5],
+  ['jack-dl15', 'PJ-DL-15', 'DC power jack — Inspiron 15', 'Laptop parts', 3900, 6500, 4, 1],
+  ['ram-8', 'RAM-D4-8S', 'RAM DDR4 8 GB SO-DIMM', 'Laptop parts', 6200, 8900, 9, 2],
+  ['kb-hp250', 'KB-HP-250G8', 'Keyboard — HP 250 G8', 'Laptop parts', 4500, 7500, 5, 1],
+  ['usb-64', 'USB-64', 'USB flash drive 64 GB', 'Accessories', 1350, 2200, 24, 5],
+];
+for (const [id, sku, name, category, cost, price, qty, lowStockAt] of STOCK) {
+  const moves = db.collection(`inventory/${id}/movements`);
+  for (const old of (await moves.get()).docs) await old.ref.delete();
+  await moves.doc('m0').set({ delta: qty, qtyAfter: qty, reason: 'received', note: 'Opening stock', byUid: manager.uid, byName: manager.name, at: at(-30, 11) });
+  await db.doc(`inventory/${id}`).set({
+    sku, name, category, cost: cost * 100, price: price * 100, qty, lowStockAt, low: qty <= lowStockAt, active: true,
+    searchTokens: searchTokens(name, sku), lastMovementId: 'm0', createdAt: at(-30, 11), updatedAt: at(-30, 11),
+  });
+}
 
-console.log('Seeded demo-fixbench: 8 customers, 8 devices, 8 tickets, 1 invoice.');
+// ---------- a quote waiting for the customer (Ayesha's Acer, t-demo-04) ----------
+{
+  const t = (await db.doc('tickets/t-demo-04').get()).data();
+  const items = [
+    { description: 'Display cable — Aspire 7', kind: 'part', qty: 1, unitPrice: 850000, optional: false },
+    { description: 'Hinge bracket set — Aspire 7', kind: 'part', qty: 1, unitPrice: 1200000, optional: false },
+    { description: 'Labour — strip, replace and test', kind: 'labour', qty: 1, unitPrice: 750000, optional: false },
+    { description: 'Internal clean and new thermal paste', kind: 'labour', qty: 1, unitPrice: 400000, optional: true, inventoryId: undefined },
+  ].map(({ inventoryId, ...i }) => i);
+  await db.doc('quotes/q-demo-01').set({
+    quoteNo: `Q-${year}-0001`, ticketId: 't-demo-04', ticketNo: t.ticketNo, customerId: t.customerId, customerName: t.customerName,
+    customerPhone: t.customerPhone, deviceLabel: t.deviceLabel,
+    diagnosis: 'Display cable worn at the left hinge, causing flicker when the lid moves. Hinge bracket cracked. Screen panel itself is fine.',
+    items, recommendedTotal: 2800000, optionalTotal: 400000, validUntil: at(6, 18), status: 'sent', sentAt: at(-1, 11),
+    createdBy: sahan.uid, createdByName: sahan.name, createdAt: at(-1, 10), updatedAt: at(-1, 11),
+  });
+}
+await db.doc(`counters/${year}`).set({ ticket: TICKETS.length, quote: 1, invoice: 1 });
+
+console.log('Seeded demo-fixbench: 8 customers, 8 devices, 8 tickets, 1 invoice, 1 quote, 7 stock items.');
 console.log(FRESH_SETUP ? 'The owner will be sent through the setup wizard.' : 'Setup is marked complete (use --fresh-setup to see the wizard).');
 console.log(`Sign in at http://localhost:5173 with any of these (password: ${PASSWORD}):`);
 for (const s of STAFF) console.log(`  ${s.role.padEnd(10)} ${s.email}`);

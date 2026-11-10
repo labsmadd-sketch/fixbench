@@ -1,0 +1,41 @@
+{
+  "name": "fixbench",
+  "private": true,
+  "version": "0.1.0",
+  "description": "FixBench — service tickets, quotes, invoices and stock for computer repair shops. One Firebase project per shop.",
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "vite --mode emulator",
+    "emulators": "firebase emulators:start --project demo-fixbench",
+    "seed": "node scripts/seed-emulator.mjs",
+    "build": "tsc --noEmit && vite build",
+    "build:shop": "tsc --noEmit && vite build --mode",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run src",
+    "test:rules": "firebase emulators:exec --only firestore --project demo-fixbench \"vitest run tests\"",
+    "setup:shop": "node scripts/setup-shop.mjs"
+  },
+  "dependencies": {
+    "@fontsource-variable/plus-jakarta-sans": "^5.1.0",
+    "@fontsource/ibm-plex-mono": "^5.1.0",
+    "firebase": "^11.0.2",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.28.0"
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "^4.0.1",
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "firebase-admin": "^13.0.1",
+    "firebase-tools": "^13.29.0",
+    "typescript": "^5.6.3",
+    "vite": "^6.0.3",
+    "vitest": "^3.2.7"
+  }
+}

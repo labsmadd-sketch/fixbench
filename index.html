@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#111827" />
+    <title>FixBench</title>
+    <script>
+      // Paint the shop's cached brand colours before React starts, so there is no flash.
+      try {
+        var cached = JSON.parse(localStorage.getItem('fixbench.theme') || 'null');
+        if (cached) for (var k in cached) document.documentElement.style.setProperty(k, cached[k]);
+      } catch (e) {}
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

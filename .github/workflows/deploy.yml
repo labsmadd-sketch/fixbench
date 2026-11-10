@@ -1,0 +1,67 @@
+name: Test and deploy
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run test:rules
+
+  shops:
+    needs: test
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    outputs:
+      list: ${{ steps.read.outputs.list }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: read
+        run: echo "list=$(jq -c . shops.json)" >> "$GITHUB_OUTPUT"
+
+  deploy:
+    needs: shops
+    if: needs.shops.outputs.list != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shop: ${{ fromJson(needs.shops.outputs.list) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # shops.json entries look like {"alias": "shop-acme", "secret": "SHOP_ACME"}.
+      # Each shop needs two repository secrets:
+      #   ENV_<secret>          contents of its .env.shop-<alias> file
+      #   FIREBASE_SA_<secret>  a deploy service-account key for that project
+      - name: Write shop config
+        env:
+          SHOP_ENV: ${{ secrets[format('ENV_{0}', matrix.shop.secret)] }}
+        run: printf '%s\n' "$SHOP_ENV" > ".env.${{ matrix.shop.alias }}"
+      - run: npm run build:shop ${{ matrix.shop.alias }}
+      - name: Deploy
+        env:
+          GOOGLE_APPLICATION_CREDENTIALS_JSON: ${{ secrets[format('FIREBASE_SA_{0}', matrix.shop.secret)] }}
+        run: |
+          printf '%s' "$GOOGLE_APPLICATION_CREDENTIALS_JSON" > "$RUNNER_TEMP/sa.json"
+          export GOOGLE_APPLICATION_CREDENTIALS="$RUNNER_TEMP/sa.json"
+          npx firebase deploy --only firestore,hosting --project "${{ matrix.shop.alias }}" --non-interactive

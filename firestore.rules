@@ -1,0 +1,158 @@
+rules_version = '2';
+
+// FixBench security rules — the only backend protection on the Spark plan.
+// Roles: owner > manager > frontdesk / technician. See docs/PLAN.md, "Security".
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---------- helpers ----------
+    function signedIn() { return request.auth != null; }
+    function userPath() { return /databases/$(database)/documents/users/$(request.auth.uid); }
+    function profile() { return get(userPath()).data; }
+    function active() { return signedIn() && exists(userPath()) && profile().active == true; }
+    function role() { return profile().role; }
+
+    function isStaff()   { return active(); }
+    function isOwner()   { return active() && role() == 'owner'; }
+    function isManager() { return active() && role() in ['owner', 'manager']; }
+    function isDesk()    { return active() && role() in ['owner', 'manager', 'frontdesk']; }
+    function isTech()    { return active() && role() == 'technician'; }
+
+    function onlyChanges(keys) {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys);
+    }
+    function byMe() { return request.resource.data.byUid == request.auth.uid; }
+
+    // ---------- shop configuration ----------
+    // Public branding for the sign-in page and the customer status page.
+    match /settings/public {
+      allow get: if true;
+      allow write: if isOwner();
+    }
+    match /settings/shop {
+      allow read: if isStaff();
+      allow write: if isOwner();
+    }
+
+    // One counter document per year: { ticket, quote, invoice }.
+    // Numbers can only ever go up by exactly one, one field at a time.
+    match /counters/{year} {
+      function bump(k) { return request.resource.data.get(k, 0) == resource.data.get(k, 0) + 1; }
+      function startsAt(k) { return request.resource.data.get(k, 0) in [0, 1]; }
+      function shapeOk() { return request.resource.data.keys().hasOnly(['ticket', 'quote', 'invoice']); }
+
+      allow read: if isStaff();
+      allow create: if isStaff() && shapeOk()
+        && startsAt('ticket') && startsAt('quote') && startsAt('invoice');
+      allow update: if isStaff() && shapeOk() && (
+           (onlyChanges(['ticket'])  && bump('ticket')  && isDesk())
+        || (onlyChanges(['quote'])   && bump('quote'))
+        || (onlyChanges(['invoice']) && bump('invoice') && isDesk())
+      );
+      allow delete: if false;
+    }
+
+    // ---------- staff ----------
+    match /users/{uid} {
+      // Anyone signed in can read their own record (to see "account turned off").
+      allow get: if signedIn() && request.auth.uid == uid;
+      allow read: if isStaff();
+      allow write: if isOwner();
+    }
+
+    // ---------- customers and devices ----------
+    match /customers/{id} {
+      allow read: if isStaff();
+      allow create, update: if isDesk();
+      allow delete: if isOwner();
+    }
+
+    match /devices/{id} {
+      allow read: if isStaff();
+      allow create, update: if isDesk();
+      allow delete: if isOwner();
+
+      // Device password / PIN. Readable by managers and the technician assigned
+      // to the linked ticket. Deleted when the device is collected.
+      match /secret/{doc} {
+        function assignedToMe() {
+          return get(/databases/$(database)/documents/tickets/$(resource.data.ticketId)).data.assignedTo
+            == request.auth.uid;
+        }
+        allow read: if isManager() || (isTech() && assignedToMe());
+        allow create, update: if isDesk();
+        allow delete: if isStaff();
+      }
+    }
+
+    // ---------- service tickets ----------
+    match /tickets/{id} {
+      allow read: if isStaff();
+      allow create: if isDesk();
+      allow update: if isDesk()
+        || (isTech() && resource.data.assignedTo == request.auth.uid
+            && onlyChanges(['status', 'diagnosis', 'updatedAt']));
+      allow delete: if isOwner();
+
+      match /history/{entry} {
+        allow read: if isStaff();
+        allow create: if isStaff() && byMe();
+        allow update, delete: if false;
+      }
+      match /notes/{note} {
+        allow read: if isStaff();
+        allow create: if isStaff() && byMe();
+        allow update, delete: if false;
+      }
+    }
+
+    // ---------- stock ----------
+    match /inventory/{id} {
+      allow read: if isStaff();
+      allow create, delete: if isManager();
+      // Front desk may only change stock levels (deducted when invoicing).
+      allow update: if isManager() || (isDesk() && onlyChanges(['qty', 'updatedAt']));
+    }
+
+    // ---------- quotes ----------
+    match /quotes/{id} {
+      allow read: if isStaff();
+      allow create, update: if isStaff();
+      allow delete: if isOwner();
+    }
+
+    // ---------- invoices and payments ----------
+    match /invoices/{id} {
+      allow read: if isDesk();
+      allow create: if isDesk() && request.resource.data.status in ['unpaid', 'partial', 'paid'];
+      allow update: if
+           // Taking a payment: only the money fields change.
+           (isDesk() && resource.data.status != 'void'
+              && onlyChanges(['paid', 'balance', 'status', 'updatedAt'])
+              && request.resource.data.status in ['unpaid', 'partial', 'paid'])
+           // Managers may correct an open invoice, but never its number or void it.
+        || (isManager() && resource.data.status != 'void'
+              && request.resource.data.status != 'void'
+              && request.resource.data.invoiceNo == resource.data.invoiceNo)
+           // Only the owner voids, and a void is final.
+        || (isOwner() && resource.data.status != 'void'
+              && request.resource.data.status == 'void'
+              && onlyChanges(['status', 'voidReason', 'voidedAt', 'voidedBy', 'updatedAt']));
+      // Invoices are never deleted, so the numbering has no gaps.
+      allow delete: if false;
+
+      match /payments/{payment} {
+        allow read: if isDesk();
+        allow create: if isDesk() && byMe() && request.resource.data.amount > 0;
+        allow update, delete: if false;
+      }
+    }
+
+    // ---------- public job status (QR code on the receipt) ----------
+    match /publicStatus/{token} {
+      allow get: if true;     // one document by its unguessable token
+      allow list: if false;   // nobody can browse other customers' jobs
+      allow write: if isStaff();
+    }
+  }
+}

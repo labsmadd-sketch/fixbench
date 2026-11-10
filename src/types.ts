@@ -78,8 +78,31 @@ export interface Customer {
   preferredContact: PreferredContact;
   whatsappConsent: boolean;
   notes?: string;
+  /** Lower-case word prefixes of name and company, for search (lib/search.ts). */
+  searchTokens: string[];
   createdAt: Timestamp;
   updatedAt: Timestamp;
+}
+
+export const DEVICE_TYPES = ['Laptop', 'Desktop', 'Printer', 'Monitor', 'Tablet', 'Phone', 'Other'] as const;
+
+/** /devices/{id} */
+export interface Device {
+  customerId: string;
+  type: string;
+  brand: string;
+  model: string;
+  serial?: string;
+  /** Upper-case serial without spaces, for lookup. */
+  serialKey?: string;
+  notes?: string;
+  createdAt: Timestamp;
+}
+
+/** /devices/{id}/secret/pin */
+export interface DeviceSecret {
+  pin: string;
+  ticketId: string;
 }
 
 export const DEFAULT_STATUSES = [
@@ -94,6 +117,9 @@ export const DEFAULT_STATUSES = [
 ] as const;
 export type TicketStatus = (typeof DEFAULT_STATUSES)[number];
 
+export const OPEN_STATUSES: TicketStatus[] = ['received', 'diagnosing', 'awaiting_approval', 'awaiting_parts', 'in_repair', 'ready'];
+export const CLOSED_STATUSES: TicketStatus[] = ['collected', 'cancelled'];
+
 /** /tickets/{id} */
 export interface Ticket {
   ticketNo: string;
@@ -102,18 +128,52 @@ export interface Ticket {
   customerPhone: string;
   deviceId: string;
   deviceLabel: string;
+  deviceType: string;
+  deviceSerial?: string;
   problem: string;
   accessories: string[];
   condition: string[];
   conditionNotes?: string;
   diagnosis?: string;
   status: TicketStatus;
-  assignedTo?: string;
-  estimate?: Cents;
-  advance?: Cents;
-  dueDate?: Timestamp;
-  publicToken?: string;
+  assignedTo?: string | null;
+  assignedName?: string | null;
+  estimate?: Cents | null;
+  advance?: Cents | null;
+  dueDate?: Timestamp | null;
+  /** Device password given at intake (stored in /devices/{id}/secret/pin). */
+  hasPin?: boolean;
+  publicToken: string;
+  createdBy: string;
+  createdByName: string;
   createdAt: Timestamp;
+  updatedAt: Timestamp;
+}
+
+/** /tickets/{id}/history/{id} */
+export interface HistoryEntry {
+  fromStatus: TicketStatus | null;
+  toStatus: TicketStatus;
+  note?: string;
+  byUid: string;
+  byName: string;
+  at: Timestamp;
+}
+
+/** /tickets/{id}/notes/{id} — internal, append-only. */
+export interface TicketNote {
+  text: string;
+  byUid: string;
+  byName: string;
+  at: Timestamp;
+}
+
+/** /publicStatus/{token} — what the customer's QR code shows. No personal details. */
+export interface PublicStatus {
+  ticketNo: string;
+  status: TicketStatus;
+  deviceLabel: string;
+  dueDate?: Timestamp | null;
   updatedAt: Timestamp;
 }
 

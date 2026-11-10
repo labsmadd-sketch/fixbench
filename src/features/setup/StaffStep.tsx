@@ -8,7 +8,7 @@ import { createStaffLogin, staffLoginError, temporaryPassword } from '../../lib/
 import { useOnline } from '../../lib/useOnline';
 import { ROLE_LABEL, type Role } from '../../types';
 import { ErrorAlert, Field, firstName, initials, StepError, StepIntro, useSave, type StepProps } from './shared';
-import { useStaff } from './useStaff';
+import { useStaff } from '../../lib/useStaff';
 
 type StaffRole = Exclude<Role, 'owner'>;
 

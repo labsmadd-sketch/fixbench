@@ -1,35 +1,7 @@
 import { ComingSoon } from '../components/ComingSoon';
-import { useSession } from '../app/session';
 
-// Placeholders for each module, in roadmap order. Each moves to its own
+// Placeholders for modules not built yet, in roadmap order. Each moves to its own
 // folder (features/<module>/) when its phase starts.
-
-export function DashboardPage() {
-  const { profile } = useSession();
-  return (
-    <ComingSoon
-      title={`Good morning${profile ? `, ${profile.name.split(' ')[0]}` : ''}`}
-      phase="Phase 2–5"
-      points={['Today’s intake, ready for pickup, overdue jobs', 'Unpaid balance and today’s takings', 'Low stock']}
-    />
-  );
-}
-
-export const TicketsPage = () => (
-  <ComingSoon title="Service tickets" phase="Phase 2 · weeks 2–3" points={['Status filters with counts', 'List and board views', 'Overdue highlighting']} />
-);
-
-export const NewTicketPage = () => (
-  <ComingSoon
-    title="New service ticket"
-    phase="Phase 2 · weeks 2–3"
-    points={['Phone lookup, returning devices', 'Accessories and condition chips', 'Ticket number issued in a transaction (lib/numbering.ts)', 'Intake receipt with QR code']}
-  />
-);
-
-export const CustomersPage = () => (
-  <ComingSoon title="Customers" phase="Phase 2 · weeks 2–3" points={['Search by phone (lib/phone.ts phoneKey)', 'Profile with devices and job history', 'New customer form with TIN and duplicate check']} />
-);
 
 export const QuotesPage = () => (
   <ComingSoon title="Quotes" phase="Phase 4 · week 5" points={['Recommended and optional items', 'WhatsApp approval message', 'Convert to invoice']} />

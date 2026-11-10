@@ -1,7 +1,7 @@
 import { collection, onSnapshot } from 'firebase/firestore';
 import { useEffect, useState } from 'react';
-import { db } from '../../lib/firebase';
-import type { StaffProfile } from '../../types';
+import { db } from './firebase';
+import type { StaffProfile } from '../types';
 
 export type StaffMember = StaffProfile & { uid: string };
 

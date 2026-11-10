@@ -15,13 +15,15 @@ Needs Node 20+ and Java 11+ (for the Firebase emulators).
 ```bash
 npm install
 npm run emulators        # terminal 1 — Auth + Firestore emulators, UI at http://localhost:4000
-npm run seed             # terminal 2 — owner, manager, front desk and technician accounts
+npm run seed             # terminal 2 — staff accounts plus demo customers and tickets
 npm run dev              # terminal 2 — app at http://localhost:5173
 ```
 
-Sign in as `owner@demo.test` / `password123` (see the seed output for the other roles).
-The owner is sent to the five-step setup wizard first. Run `npm run seed` again to reset
-the shop to "not set up" and go through the wizard again.
+Sign in as `owner@demo.test`, `desk@demo.test` or `tech@demo.test` with `password123`
+(see the seed output for every role).
+
+- `npm run seed -- --reset` clears all emulator data first (use it to start clean).
+- `npm run seed -- --fresh-setup` leaves setup unfinished, so the owner sees the wizard.
 
 ## Scripts
 
@@ -29,9 +31,10 @@ the shop to "not set up" and go through the wizard again.
 | --- | --- |
 | `npm run dev` | App against the local emulators (`.env.emulator`) |
 | `npm run emulators` | Auth and Firestore emulators for project `demo-fixbench` |
-| `npm run seed` | Staff accounts and shop settings in the emulators |
-| `npm test` | Unit tests: theming contrast, phone numbers, money |
+| `npm run seed` | Staff, shop settings, demo customers, devices and tickets in the emulators |
+| `npm test` | Unit tests: theming contrast, phone numbers, money, search, dates, statuses |
 | `npm run test:rules` | Security rules tests against the Firestore emulator |
+| `npm run test:e2e` | Browser test of customers, intake, tickets and roles (needs `emulators` and `dev` running; resets emulator data) |
 | `npm run typecheck` | TypeScript, no output |
 | `npm run build:shop shop-<alias>` | Production build using `.env.shop-<alias>` |
 | `npm run setup:shop -- …` | Create and deploy a new shop (see `scripts/setup-shop.mjs`) |
@@ -63,4 +66,8 @@ scripts/        setup-shop.mjs, seed-emulator.mjs
 Phase 1 (Foundations): sign-in, roles, theming, layout, rules, emulator seed, setup script draft, CI.
 Setup wizard: all five steps (shop details, logo and colours, tax and numbering, add staff, ready),
 plus the first sign-in password change for staff given a temporary password.
-Other screens are placeholders that name the roadmap phase that builds them.
+Phase 2 (Customers, devices, tickets): customer search by phone or name, profiles, new/edit form
+with TIN and duplicate warnings; devices with PINs deleted on collection; tickets list and board,
+intake with a transaction-issued number, detail with status flow, history, notes and diagnosis;
+80mm intake receipt with QR code; public status page; dashboard from open tickets.
+Quotes, invoices, inventory, reports and settings are placeholders that name their roadmap phase.

@@ -109,6 +109,37 @@ describe('tickets', () => {
     await assertFails(updateDoc(doc(as('tech'), 'tickets', 't1'), { assignedTo: 'tech2' }));
     await assertFails(updateDoc(doc(as('tech'), 'tickets', 't2'), { status: 'ready' }));
   });
+
+  it('technicians cannot hand over or cancel; the counter can', async () => {
+    await assertFails(updateDoc(doc(as('tech'), 'tickets', 't1'), { status: 'collected' }));
+    await assertFails(updateDoc(doc(as('tech'), 'tickets', 't1'), { status: 'cancelled' }));
+    await assertSucceeds(updateDoc(doc(as('desk'), 'tickets', 't1'), { status: 'collected' }));
+    // …and a closed job stays closed for the technician.
+    await assertFails(updateDoc(doc(as('tech'), 'tickets', 't1'), { status: 'in_repair' }));
+  });
+
+  it('nobody changes a ticket number', async () => {
+    await assertFails(updateDoc(doc(as('owner'), 'tickets', 't1'), { ticketNo: 'T-2026-9999' }));
+    await assertSucceeds(updateDoc(doc(as('desk'), 'tickets', 't1'), { problem: 'No power' }));
+  });
+
+  it('history and notes are append-only and signed by the writer', async () => {
+    await assertSucceeds(setDoc(doc(as('tech'), 'tickets', 't1', 'notes', 'n1'), { text: 'Reflowed', byUid: 'tech' }));
+    await assertFails(setDoc(doc(as('tech'), 'tickets', 't1', 'notes', 'n2'), { text: 'Fake', byUid: 'desk' }));
+    await assertFails(updateDoc(doc(as('tech'), 'tickets', 't1', 'notes', 'n1'), { text: 'Edited' }));
+    await assertFails(deleteDoc(doc(as('owner'), 'tickets', 't1', 'notes', 'n1')));
+    await assertSucceeds(setDoc(doc(as('desk'), 'tickets', 't1', 'history', 'h1'), { toStatus: 'ready', byUid: 'desk' }));
+  });
+});
+
+describe('customers', () => {
+  it('front desk adds and edits; technicians only read; only the owner deletes', async () => {
+    await assertSucceeds(setDoc(doc(as('desk'), 'customers', 'c1'), { name: 'Kasun', phoneKey: '0771234567' }));
+    await assertSucceeds(getDoc(doc(as('tech'), 'customers', 'c1')));
+    await assertFails(updateDoc(doc(as('tech'), 'customers', 'c1'), { name: 'X' }));
+    await assertFails(deleteDoc(doc(as('manager'), 'customers', 'c1')));
+    await assertSucceeds(deleteDoc(doc(as('owner'), 'customers', 'c1')));
+  });
 });
 
 describe('device passwords', () => {

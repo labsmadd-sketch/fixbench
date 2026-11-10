@@ -102,9 +102,16 @@ service cloud.firestore {
     match /tickets/{id} {
       allow read: if isStaff();
       allow create: if isDesk();
-      allow update: if isDesk()
+      // The ticket number never changes once issued.
+      allow update: if request.resource.data.ticketNo == resource.data.ticketNo && (
+           isDesk()
+           // Technicians work on their own open jobs; handing over or cancelling
+           // is done at the counter.
         || (isTech() && resource.data.assignedTo == request.auth.uid
-            && onlyChanges(['status', 'diagnosis', 'updatedAt']));
+            && onlyChanges(['status', 'diagnosis', 'updatedAt'])
+            && !(resource.data.status in ['collected', 'cancelled'])
+            && !(request.resource.data.status in ['collected', 'cancelled']))
+      );
       allow delete: if isOwner();
 
       match /history/{entry} {

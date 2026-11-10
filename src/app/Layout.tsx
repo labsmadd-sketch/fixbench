@@ -1,4 +1,8 @@
-import { NavLink, Outlet } from 'react-router-dom';
+import { getDocs } from 'firebase/firestore';
+import { useState, type FormEvent } from 'react';
+import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { ticketByNumberQuery } from '../features/tickets/data';
+import { looksLikeTicketNo } from '../lib/search';
 import { useOnline } from '../lib/useOnline';
 import { ROLE_LABEL, type Role } from '../types';
 import { Icon, type IconName } from '../components/Icon';
@@ -36,6 +40,24 @@ export function Layout() {
   const online = useOnline();
   const role = profile?.role;
   const shopName = shop?.name ?? 'Your shop';
+  const navigate = useNavigate();
+  const [search, setSearch] = useState('');
+
+  // A ticket number opens that ticket; anything else searches customers.
+  async function onSearch(e: FormEvent) {
+    e.preventDefault();
+    const q = search.trim();
+    if (!q) return;
+    if (looksLikeTicketNo(q)) {
+      const snap = await getDocs(ticketByNumberQuery(q.toUpperCase())).catch(() => null);
+      if (snap && !snap.empty) {
+        setSearch('');
+        return navigate(`/tickets/${snap.docs[0].id}`);
+      }
+    }
+    navigate(`/customers?q=${encodeURIComponent(q)}`, { state: { search: Date.now() } });
+    setSearch('');
+  }
 
   return (
     <div className="shell">
@@ -71,10 +93,15 @@ export function Layout() {
 
       <div className="main">
         <header className="topbar">
-          <label className="search">
+          <form className="search" role="search" onSubmit={(e) => void onSearch(e)}>
             <Icon name="search" />
-            <input aria-label="Search" placeholder="Search phone, name, ticket no. or serial" />
-          </label>
+            <input
+              aria-label="Search customers or a ticket number"
+              placeholder="Search phone, name or ticket no."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+          </form>
           {online ? (
             <span className="pill pill--ok">
               <span className="dot" />

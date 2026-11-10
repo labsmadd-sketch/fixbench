@@ -5,7 +5,7 @@ import { formatNumber } from '../../lib/numberFormat';
 import { DEFAULT_BRAND } from '../../theme/brand';
 import { ROLE_LABEL } from '../../types';
 import { ErrorAlert, saveSettings, StepIntro, useSave, type StepProps } from './shared';
-import { useStaff } from './useStaff';
+import { useStaff } from '../../lib/useStaff';
 
 type Paper = '80' | 'a4';
 

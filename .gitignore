@@ -19,3 +19,7 @@ service-account*.json
 
 # Browser test screenshots
 tests/e2e/shots/
+
+# Temporary files from scripts/setup-shop.mjs (owner bootstrap)
+.firestore.bootstrap-*
+.firebase.bootstrap-*

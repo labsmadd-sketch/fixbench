@@ -37,7 +37,7 @@ Sign in as `owner@demo.test`, `desk@demo.test` or `tech@demo.test` with `passwor
 | `npm run test:e2e` | Browser tests of customers, intake, tickets, invoices, payments and roles (needs `emulators` and `dev` running; resets emulator data) |
 | `npm run typecheck` | TypeScript, no output |
 | `npm run build:shop shop-<alias>` | Production build using `.env.shop-<alias>` |
-| `npm run setup:shop -- …` | Create and deploy a new shop (see `scripts/setup-shop.mjs`) |
+| `npm run setup:shop -- --account <google> --alias <name> --project-id <id> --owner-email … --owner-name …` | Create and deploy a new shop with the given Google account (see `scripts/setup-shop.mjs`; no service-account key needed) |
 
 ## Layout
 
@@ -78,3 +78,21 @@ VAT/SSCL for registered shops; numbers issued in a transaction; intake advance a
 part payments by cash, card, bank transfer or LANKAQR; owner-only void; A4 print / save as PDF;
 WhatsApp and email share; hand-over from the invoice; unpaid balance and today's takings on the dashboard.
 Quotes, inventory, reports and settings are placeholders that name their roadmap phase.
+
+## Shops
+
+| Alias | Firebase project | URL | Notes |
+| --- | --- | --- | --- |
+| `shop-staging` | `fixbench-cde93` | https://fixbench-cde93.web.app | Staging: try releases here first |
+
+Deploy by hand with the Madd Labs account (never the CLI default):
+
+```bash
+npm run build:shop shop-staging
+npx firebase deploy --only firestore,hosting --project shop-staging --account labsmadd@gmail.com
+```
+
+Automatic deploys from GitHub need keyless credentials (Workload Identity Federation),
+because new Google Cloud projects block service-account keys. Until that is set up,
+`shops.json` stays empty and CI only runs the tests.
+

@@ -1,5 +1,6 @@
 {
   "projects": {
-    "default": "demo-fixbench"
+    "default": "demo-fixbench",
+    "shop-staging": "fixbench-cde93"
   }
 }
